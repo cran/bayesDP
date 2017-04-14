@@ -15,6 +15,7 @@
 #'   Default is 1. For a two-arm trial, users may specify a vector of two values
 #'   where the first value is used to weight the historical treatment group and
 #'   the second value is used to weight the historical control group.
+#' @param fix_alpha logical. Fix alpha at alpha_max? Default value is FALSE.
 #' @param weibull_shape scalar. Shape parameter of the Weibull discount function
 #'   used to compute alpha, the weight parameter of the historical data. Default
 #'   value is 3. For a two-arm trial, users may specify a vector of two values
@@ -23,20 +24,16 @@
 #'   historical control group.
 #' @param weibull_scale scalar. Scale parameter of the Weibull discount function
 #'   used to compute alpha, the weight parameter of the historical data. Default
-#'   value is 0.135. Two values have special treatment: 0 and Inf. For
-#'   weibull_scale = 0, alpha is set to 0, i.e., no weight. For
-#'   weibull_scale = Inf, alpha is set to 1, i.e., full weight. For a two-arm
-#'   trial, users may specify a vector of two values where the first value is
-#'   used to estimate the weight of the historical treatment group and the
-#'   second value is used to estimate the weight of the historical control
-#'   group.
+#'   value is 0.135. For a two-arm trial, users may specify a vector of two values
+#'   where the first value is used to estimate the weight of the historical
+#'   treatment group and the second value is used to estimate the weight of the
+#'   historical control group.
 #' @param number_mcmc scalar. Number of Markov Chain Monte Carlo (MCMC)
 #'   simulations. Default is 10000.
 #' @param a0 scalar. Prior value for the beta rate. Default is 1.
 #' @param b0 scalar. Prior value for the beta rate. Default is 1.
-#' @param two_side scalar. Indicator of two-sided test for the discount
-#'   function. Default value is 1.
-#'
+#' @param two_side logical. Indicator of two-sided test for the discount
+#'   function. Default value is TRUE.
 #' @details \code{bdpbinomial} uses a two-stage approach for determining the
 #'   strength of historical data in estimation of a binomial count mean outcome.
 #'   In the first stage, a Weibull distribution function is used as a
@@ -80,7 +77,7 @@
 #'    \itemize{
 #'      \item{\code{alpha_discount}}{
 #'        numeric. Alpha value, the weighting parameter of the historical data.}
-#'      \item{\code{pvalue}}{
+#'      \item{\code{p_hat}}{
 #'        numeric. The posterior probability of the stochastic comparison
 #'        between the current and historical data.}
 #'      \item{\code{posterior}}{
@@ -116,7 +113,7 @@
 #'      \item{\code{density_prior_control}}{
 #'        object of class \code{density}. Used internally to plot the density of
 #'        the control group (if present) prior.}
-#'      \item{\code{TestMinusControl_post}}{
+#'      \item{\code{comparison_posterior}}{
 #'        vector. If control group is present, vector contains posterior
 #'        distribution of the effect estimate of treatment vs. control.
 #'        control groups.}
@@ -178,12 +175,13 @@ setGeneric("bdpbinomial",
                     y0_c          = NULL,
                     N0_c          = NULL,
                     alpha_max     = 1,
+                    fix_alpha     = FALSE,
                     a0            = 1,
                     b0            = 1,
                     number_mcmc   = 10000,
                     weibull_scale = 0.135,
                     weibull_shape = 3,
-                    two_side      = 1){      #Difference margin
+                    two_side      = TRUE){
              standardGeneric("bdpbinomial")
            })
 
@@ -198,12 +196,13 @@ setMethod("bdpbinomial",
                    y0_c          = NULL,
                    N0_c          = NULL,
                    alpha_max     = 1,
+                   fix_alpha     = FALSE,
                    a0            = 1,
                    b0            = 1,
                    number_mcmc   = 10000,
                    weibull_scale = 0.135,
                    weibull_shape = 3,
-                   two_side      = 1){      #Difference margin
+                   two_side      = TRUE){
 
 
   ################################################################################
@@ -213,7 +212,7 @@ setMethod("bdpbinomial",
   intent <- c()
   if(length(y_t + N_t) != 0){
     intent <- c(intent,"current treatment")
-    cat("Current Treatment\n")
+    #cat("Current Treatment\n")
   }else{
     if(is.null(y_t) == TRUE){
       cat("y_t missing\n")
@@ -226,7 +225,7 @@ setMethod("bdpbinomial",
 
   if(length(y0_t + N0_t) != 0){
     intent <- c(intent,"historical treatment")
-    cat("Historical Treatment\n")
+    #cat("Historical Treatment\n")
   }else{
     if(length(c(y0_t, N0_t)) > 0){
       if(is.null(y0_t) == TRUE){
@@ -241,7 +240,7 @@ setMethod("bdpbinomial",
 
   if(length(y_c + N_c) != 0){
     intent <- c(intent,"current control")
-    cat("Current Control\n")
+    #cat("Current Control\n")
   }else{
     if(length(c(y_c, N_c)) > 0){
       if(is.null(y_c) == TRUE){
@@ -256,7 +255,7 @@ setMethod("bdpbinomial",
 
   if(length(y0_c + N0_c) != 0){
     intent <- c(intent,"historical control")
-    cat("Historical Control\n")
+    #cat("Historical Control\n")
   }else{
     if(length(c(y0_c, N0_c)) > 0){
       if(is.null(y0_c) == TRUE){
@@ -270,12 +269,10 @@ setMethod("bdpbinomial",
   }
 
 
-  if(length(y_c + N_c + y0_c  + N0_c)!=0){
+  if(!is.null(N_c) | !is.null(N0_c)){
     arm2 <- TRUE
-    #print("Assuming 2 arm binomial.")
   }else{
     arm2 <- FALSE
-    #print("Assuming 1 arm binomial.")
   }
 
 
@@ -296,164 +293,18 @@ setMethod("bdpbinomial",
   }
 
 
-  ################################################################################
-  # Estimate weight for prior data assuming a binomial outcome                   #
-  ################################################################################
-  discount_function_binomial <- function(y, N, y0, N0, alpha_max, a0, b0, number_mcmc,
-                                         weibull_shape, weibull_scale, two_side){
-
-    ### Theta for using flat prior
-    a_post_flat     <- y + a0
-    b_post_flat     <- N - y + b0
-    posterior_flat  <- rbeta(number_mcmc, a_post_flat, b_post_flat)
-
-    ### Prior model
-    a_prior  <- y0 + a0
-    b_prior  <- N0 - y0 + b0
-    prior    <- rbeta(number_mcmc, a_prior, b_prior) #flat prior
-
-    ### Test of model vs real
-    p_test <- mean(posterior_flat < prior)   # larger is higher failure
-
-    ### Number of effective sample size given shape and scale discount function
-    if(weibull_shape %in% c(0,Inf)){
-      if(weibull_shape == 0){
-        alpha_discount <- 0
-      } else{
-        alpha_discount <- 1
-      }
-    } else{
-      if (two_side == 0) {
-        alpha_discount <- pweibull(p_test, shape=weibull_shape, scale=weibull_scale)*alpha_max
-      } else if (two_side == 1){
-        p_test1    <- ifelse(p_test > 0.5, 1 - p_test, p_test)
-        alpha_discount <- pweibull(p_test1, shape=weibull_shape, scale=weibull_scale)*alpha_max
-      }
-    }
-
-    return(list(alpha_discount  = alpha_discount,
-                pvalue          = p_test,
-                posterior_flat  = posterior_flat,
-                prior           = prior))
-  }
-
-
-  ################################################################################
-  # Posterior augmentation for Binomial distribution
-  ################################################################################
-  posterior_augment_binomial <- function(y, N, y0, N0, alpha_discount, a0, b0,
-                                         number_mcmc){
-
-    effective_N0 <- N0 * alpha_discount
-
-    if(is.null(N0)){
-      a_prior <- a0
-      b_prior <- b0
-    }else{
-      a_prior <- (y0/N0)*effective_N0 + a0
-      b_prior <- effective_N0 - (y0/N0)*effective_N0 + b0
-    }
-
-    a_post_aug <- y + a_prior
-    b_post_aug <- N - y + b_prior
-
-    post_aug <- rbeta(number_mcmc, a_post_aug, b_post_aug)
-    return(post_aug)
-  }
-
-  ################################################################################
-  # Combine discount function and posterior estimation into one function
-  ################################################################################
-  binomial_posterior <- function(y, N, y0, N0, alpha_max, a0, b0, number_mcmc,
-                                 weibull_shape, weibull_scale, two_side){
-
-    alpha_discount <- discount_function_binomial(y             = y,
-                                                 N             = N,
-                                                 y0            = y0,
-                                                 N0            = N0,
-                                                 alpha_max     = alpha_max,
-                                                 a0            = a0,
-                                                 b0            = b0,
-                                                 number_mcmc   = number_mcmc,
-                                                 weibull_shape = weibull_shape,
-                                                 weibull_scale = weibull_scale,
-                                                 two_side      = two_side)
-
-    posterior <- posterior_augment_binomial(y              = y,
-                                            N              = N,
-                                            y0             = y0,
-                                            N0             = N0,
-                                            alpha_discount = alpha_discount$alpha_discount,
-                                            a0             = a0,
-                                            b0             = b0,
-                                            number_mcmc    = number_mcmc)
-
-    return(list(alpha_discount  = alpha_discount$alpha_discount,
-                pvalue          = alpha_discount$pvalue,
-                posterior       = posterior,
-                posterior_flat  = alpha_discount$posterior_flat,
-                prior           = alpha_discount$prior,
-                weibull_scale   = weibull_scale,
-                weibull_shape   = weibull_shape,
-                y               = y,
-                N               = N,
-                y0              = y0,
-                N0              = N0,
-                N0_effective    = alpha_discount$alpha_discount*N0))
-  }
-
-
-  ################################################################################
-  # Create final result class
-  # - If no control, only returns posterior info for the treatment data
-  ################################################################################
-  final_binomial <- function(posterior_treatment, posterior_control=NULL){
-
-    density_post_treatment  <- density(posterior_treatment$posterior,
-                                       adjust = .5)
-    density_flat_treatment  <- density(posterior_treatment$posterior_flat,
-                                       adjust = .5)
-    density_prior_treatment <- density(posterior_treatment$prior,
-                                       adjust = .5)
-
-    if(is.null(posterior_control)){
-      treatment_posterior <- posterior_treatment$posterior
-
-      return(list(density_post_treatment  = density_post_treatment,
-                  density_flat_treatment  = density_flat_treatment,
-                  density_prior_treatment = density_prior_treatment,
-                  treatment_posterior     = treatment_posterior))
-    } else{
-      density_post_control  <- density(posterior_control$posterior,
-                                       adjust = .5)
-      density_flat_control  <- density(posterior_control$posterior_flat,
-                                       adjust = .5)
-      density_prior_control <- density(posterior_control$prior,
-                                       adjust = .5)
-
-      comparison_posterior <- posterior_treatment$posterior - posterior_control$posterior
-
-      return(list(density_post_control    = density_post_control,
-                  density_flat_control    = density_flat_control,
-                  density_prior_control   = density_prior_control,
-                  density_post_treatment  = density_post_treatment,
-                  density_flat_treatment  = density_flat_treatment,
-                  density_prior_treatment = density_prior_treatment,
-                  comparison_posterior    = comparison_posterior))
-    }
-
-  }
 
 
   ##############################################################################
   # Run model and collect results
   ##############################################################################
-  posterior_treatment <- binomial_posterior(
+  posterior_treatment <- posterior_binomial(
     y             = y_t,
     N             = N_t,
     y0            = y0_t,
     N0            = N0_t,
     alpha_max     = alpha_max[1],
+    fix_alpha     = fix_alpha,
     a0            = a0,
     b0            = b0,
     number_mcmc   = number_mcmc,
@@ -461,13 +312,14 @@ setMethod("bdpbinomial",
     weibull_shape = weibull_shape[1],
     two_side      = two_side)
 
-  if (arm2==TRUE){
-    posterior_control <- binomial_posterior(
+  if(arm2){
+    posterior_control <- posterior_binomial(
       y             = y_c,
       N             = N_c,
       y0            = y0_c,
       N0            = N0_c,
       alpha_max     = alpha_max[2],
+      fix_alpha     = fix_alpha,
       a0            = a0,
       b0            = b0,
       number_mcmc   = number_mcmc,
@@ -476,7 +328,7 @@ setMethod("bdpbinomial",
       two_side      = two_side)
   }
 
-  if (arm2==TRUE){
+  if(arm2){
     f1 <- final_binomial(posterior_treatment = posterior_treatment,
                          posterior_control   = posterior_control)
   }
@@ -493,7 +345,8 @@ setMethod("bdpbinomial",
                 N_c           = N_c,
                 y0_c          = y0_c,
                 N0_c          = N0_c,
-                alpha_max     = alpha_max[1],
+                alpha_max     = alpha_max,
+                fix_alpha     = fix_alpha,
                 a0            = a0,
                 b0            = b0,
                 number_mcmc   = number_mcmc,
@@ -503,7 +356,7 @@ setMethod("bdpbinomial",
                 arm2          = arm2,
                 intent        = paste(intent,collapse=", "))
 
-  if(arm2==TRUE){
+  if(arm2){
     me <- list(posterior_treatment = posterior_treatment,
                posterior_control   = posterior_control,
                f1                  = f1,
@@ -517,5 +370,179 @@ setMethod("bdpbinomial",
   class(me) <- "bdpbinomial"
 
   return(me)
+
+})
+
+
+
+
+################################################################################
+# Binomial posterior estimation
+# 1) Estimate the discount function (if current+historical data both present)
+# 2) Estimate the posterior of the augmented data
+################################################################################
+posterior_binomial <- function(y, N, y0, N0, alpha_max, fix_alpha, a0, b0,
+                               number_mcmc, weibull_scale, weibull_shape,
+                               two_side){
+
+  ### Compute posterior(s) of current (flat) and historical (prior) data
+  ### with non-informative priors
+  if(!is.null(N)){
+    posterior_flat  <- rbeta(number_mcmc, y + a0, N - y + b0)
+  } else{
+    posterior_flat <- NULL
+  }
+
+  if(!is.null(N0)){
+    prior    <- rbeta(number_mcmc, y0 + a0, N0 - y0 + b0)
+  } else{
+    prior <- NULL
+  }
+
+  ##############################################################################
+  # Discount function
+  ##############################################################################
+  ### Compute stochastic comparison and alpha discount only if both
+  ### N and N0 are present (i.e., current & historical data are present)
+  if(!is.null(N) & !is.null(N0)){
+
+    ### Test of model vs real
+    p_test <- mean(posterior_flat < prior)   # larger is higher failure
+
+    ### Number of effective sample size given shape and scale discount function
+    if(fix_alpha == TRUE){
+      alpha_discount <- alpha_max
+    } else{
+      if (!two_side) {
+        alpha_discount <- pweibull(p_test, shape=weibull_shape,
+                                   scale=weibull_scale)*alpha_max
+      } else if (two_side){
+        p_test1    <- ifelse(p_test > 0.5, 1 - p_test, p_test)
+        alpha_discount <- pweibull(p_test1, shape=weibull_shape,
+                                   scale=weibull_scale)*alpha_max
+      }
+    }
+    p_hat <- p_test
+
+  } else{
+    alpha_discount <- NULL
+    p_hat         <- NULL
+  }
+
+
+  ##############################################################################
+  # Posterior augmentation
+  # - If current or historical data are missing, this will not augment but
+  #   will return the posterior of the non-missing data (with flat prior)
+  ##############################################################################
+  ### If only the historical data is present, compute posterior on historical
+  if(is.null(N0) & !is.null(N)){
+    posterior <- posterior_flat
+
+  } else if(!is.null(N0) & is.null(N)){
+    posterior <- prior
+
+  } else if(!is.null(N0) & !is.null(N)){
+    effective_N0 <- N0 * alpha_discount
+    a_prior    <- (y0/N0)*effective_N0 + a0
+    b_prior    <- effective_N0 - (y0/N0)*effective_N0 + b0
+    a_post_aug <- y + a_prior
+    b_post_aug <- N - y + b_prior
+    posterior  <- rbeta(number_mcmc, a_post_aug, b_post_aug)
+  }
+
+  return(list(alpha_discount  = alpha_discount,
+              p_hat           = p_hat,
+              posterior       = posterior,
+              posterior_flat  = posterior_flat,
+              prior           = prior,
+              weibull_scale   = weibull_scale,
+              weibull_shape   = weibull_shape,
+              y               = y,
+              N               = N,
+              y0              = y0,
+              N0              = N0))
+}
+
+
+
+
+################################################################################
+# Binomial: create final result class
+# - If no control, only returns posterior info for the treatment data
+# - TODO: Remove density() functions and have plot method compute
+#         densities on the fly
+################################################################################
+#' @title final_binomial
+#' @description final_binomial
+#' @param posterior_treatment posterior_treatment
+#' @param posterior_control posterior_control
+#' @rdname final_binomial
+#' @aliases final_binomial,ANY-method
+#' @export final_binomial
+setGeneric("final_binomial",
+           function(posterior_treatment = NULL,
+                    posterior_control   = NULL){
+    standardGeneric("final_binomial")
+  })
+
+  setMethod("final_binomial",
+            signature(),
+            function(posterior_treatment = NULL,
+                     posterior_control   = NULL){
+
+  density_post_treatment  <- density(posterior_treatment$posterior,
+                                     adjust = .5)
+
+  if(!is.null(posterior_treatment$posterior_flat)){
+    density_flat_treatment  <- density(posterior_treatment$posterior_flat,
+                                       adjust = .5)
+  } else{
+    density_flat_treatment <- NULL
+  }
+
+  if(!is.null(posterior_treatment$prior)){
+    density_prior_treatment <- density(posterior_treatment$prior,
+                                       adjust = .5)
+  } else{
+    density_prior_treatment <- NULL
+  }
+
+
+  if(is.null(posterior_control)){
+    treatment_posterior <- posterior_treatment$posterior
+
+    return(list(density_post_treatment  = density_post_treatment,
+                density_flat_treatment  = density_flat_treatment,
+                density_prior_treatment = density_prior_treatment,
+                treatment_posterior     = treatment_posterior))
+  } else{
+    density_post_control  <- density(posterior_control$posterior,
+                                     adjust = .5)
+
+    if(!is.null(posterior_control$posterior_flat)){
+      density_flat_control  <- density(posterior_control$posterior_flat,
+                                       adjust = .5)
+    } else{
+      density_flat_control <- NULL
+    }
+
+    if(!is.null(posterior_control$prior)){
+      density_prior_control <- density(posterior_control$prior,
+                                       adjust = .5)
+    } else{
+      density_prior_control <- NULL
+    }
+
+    comparison_posterior <- posterior_treatment$posterior - posterior_control$posterior
+
+    return(list(density_post_control    = density_post_control,
+                density_flat_control    = density_flat_control,
+                density_prior_control   = density_prior_control,
+                density_post_treatment  = density_post_treatment,
+                density_flat_treatment  = density_flat_treatment,
+                density_prior_treatment = density_prior_treatment,
+                comparison_posterior    = comparison_posterior))
+  }
 
 })

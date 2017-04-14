@@ -8,17 +8,18 @@
 #'   historical. See "Details" for more information.
 #' @param data data frame. A data frame with columns 'time', 'status',
 #'   'treatment', and historical.' See "Details" for required structure.
-#' @param breaks vector. Breaks (intervals) used to compose the breaks of the
-#'   piecewise exponential model.
+#' @param breaks vector. Breaks (interval starts) used to compose the breaks of the
+#'   piecewise exponential model. Do not include zero.
 #' @param a0 scalar. Prior value for the gamma shape. Default is 1.
 #' @param b0 scalar. Prior value for the gamma rate. Default is 1.
 #' @param surv_time scalar. Survival time of interest for computing the the
-#'   probability of survival for a single arm, i.e., an OPC trial. Default is
-#'   median survival time.
+#'   probability of survival for a single arm (OPC) trial. Default is
+#'   overall, i.e., current+historical, median survival time.
 #' @param alpha_max scalar. Maximum weight the discount function can apply.
 #'   Default is 1. For a two-arm trial, users may specify a vector of two values
 #'   where the first value is used to weight the historical treatment group and
 #'   the second value is used to weight the historical control group.
+#' @param fix_alpha logical. Fix alpha at alpha_max? Default value is FALSE.
 #' @param number_mcmc scalar. Number of Markov Chain Monte Carlo (MCMC)
 #'   simulations. Default is 10000.
 #' @param weibull_shape scalar. Shape parameter of the Weibull discount function
@@ -29,15 +30,12 @@
 #'   historical control group.
 #' @param weibull_scale scalar. Scale parameter of the Weibull discount function
 #'   used to compute alpha, the weight parameter of the historical data. Default
-#'   value is 0.135. Two values have special treatment: 0 and Inf. For
-#'   weibull_scale = 0, alpha is set to 0, i.e., no weight. For
-#'   weibull_scale = Inf, alpha is set to 1, i.e., full weight. For a two-arm
-#'   trial, users may specify a vector of two values where the first value is
-#'   used to estimate the weight of the historical treatment group and the
-#'   second value is used to estimate the weight of the historical control
-#'   group.
-#' @param two_side scalar. Indicator of two-sided test for the discount
-#'   function. Default value is 1.
+#'   value is 0.135. For a two-arm trial, users may specify a vector of two
+#'   values where the first value is used to estimate the weight of the
+#'   historical treatment group and the second value is used to estimate the
+#'   weight of the historical control group.
+#' @param two_side logical. Indicator of two-sided test for the discount
+#'   function. Default value is TRUE.
 #'
 #' @details \code{bdpsurvival} uses a two-stage approach for determining the
 #'   strength of historical data in estimation of a survival probability outcome.
@@ -83,7 +81,7 @@
 #'    \itemize{
 #'      \item{\code{alpha_discount}}{
 #'        numeric. Alpha value, the weighting parameter of the historical data.}
-#'      \item{\code{pvalue}}{
+#'      \item{\code{p_hat}}{
 #'        numeric. The posterior probability of the stochastic comparison
 #'        between the current and historical data.}
 #'      \item{\code{posterior}}{
@@ -161,10 +159,11 @@ setGeneric("bdpsurvival",
            b0            = 0.1,
            surv_time     = NULL,
            alpha_max     = 1,
+           fix_alpha     = FALSE,
            number_mcmc   = 10000,
            weibull_scale = 0.135,
            weibull_shape = 3,
-           two_side      = 1){
+           two_side      = TRUE){
              standardGeneric("bdpsurvival")
            })
 
@@ -177,10 +176,11 @@ setMethod("bdpsurvival",
            b0            = 0.1,
            surv_time     = NULL,
            alpha_max     = 1,
+           fix_alpha     = FALSE,
            number_mcmc   = 10000,
            weibull_scale = 0.135,
            weibull_shape = 3,
-           two_side      = 1){
+           two_side      = TRUE){
 
   ### Check dataframe and ensure it has the correct column names
   namesData <- tolower(names(data))
@@ -188,22 +188,20 @@ setMethod("bdpsurvival",
   if(length(namesDiff)>0){
     nDiff <- length(namesDiff)
     if(nDiff == 1){
-      errorMsg <- paste0("Error: column ",
+      errorMsg <- paste0("Column ",
                          namesDiff,
                          " is missing from the input dataframe.")
-      return(errorMsg)
+      stop(errorMsg)
     } else if(nDiff>1){
       errorNames <- paste0(namesDiff, collapse = ", ")
-      errorMsg <- paste0("Error: columns are missing from input dataframe: ",
+      errorMsg <- paste0("Columns are missing from input dataframe: ",
                          errorNames)
+      stop(errorMsg)
     }
   }
 
 
 
-  ### Set internal arm2 value to FALSE. Currently, only single arm trial is
-  ### supported for survival data
-  arm2 <- FALSE
 
   historical <- NULL
   treatment <- NULL
@@ -234,10 +232,12 @@ setMethod("bdpsurvival",
      breaks <- quantile(data$time,probs=c(0.2,0.4,0.6,0.8))
   }
 
-  ### If too many breaks, return error
-  if(length(breaks) > 5){
-    return("Error: currently only a maximum of 5 breaks are supported.")
+  ### If zero is present in breaks, remove and give warning
+  if(any(breaks==0)){
+    breaks <- breaks[!(breaks==0)]
+    warning("Breaks vector includeded 0. The zero value was removed.")
   }
+
 
 
   ### Split the data on the breaks
@@ -246,12 +246,6 @@ setMethod("bdpsurvival",
                          start   = "start",
                          episode = "interval",
                          data    = data)
-
-
-  ### If surv_time is null, replace with median time
-  if(is.null(surv_time)){
-    surv_time <- median(dataSplit$time)
-  }
 
 
   ### Compute exposure time within each interval
@@ -269,36 +263,57 @@ setMethod("bdpsurvival",
   S0_t <- subset(dataSplit, historical==1 & treatment == 1)
   S0_c <- subset(dataSplit, historical==1 & treatment == 0)
 
-  ### Check inputs
-  if(!arm2){
-    if(nrow(S_t) == 0) return("Error: current treatment data missing or input incorrectly.")
-    if(nrow(S0_t) == 0) return("Error: historical treatment data missing or input incorrectly.")
-    if(nrow(S_c) > 0) return("Error: current control data present. Two arm analysis not supported.")
-    if(nrow(S0_c) > 0) return("Error: historical control data present. Two arm analysis not supported.")
-  } else if(arm2){
-    if(nrow(S_t) == 0) return("Error: current treatment data missing or input incorrectly.")
-    if(nrow(S_c) == 0) return("Error: current control data missing or input incorrectly.")
-    if(nrow(S0_t) == 0 & nrow(S0_c)==0) return("Error: historical data input incorrectly.")
+  if(nrow(S0_t) == 0) S0_t <- NULL
+  if(nrow(S_c) == 0)  S_c  <- NULL
+  if(nrow(S0_c) == 0) S0_c <- NULL
+
+
+  ### Compute arm2, internal indicator of a two-arm trial
+  if(is.null(S_c) & is.null(S0_c)){
+    arm2 <- FALSE
+  } else{
+    arm2 <- TRUE
   }
 
-  posterior_treatment <- survival_posterior(
+  if(arm2) stop("Two arm trials are not currently supported.")
+
+  ### If surv_time is null, replace with median time
+  if(is.null(surv_time) & !arm2){
+    surv_time <- median(data$time)
+  }
+
+
+  ### Check inputs
+  if(!arm2){
+    if(nrow(S_t) == 0) stop("Current treatment data missing or input incorrectly.")
+    if(is.null(S0_t)) warning("Historical treatment data missing or input incorrectly.")
+  } else if(arm2){
+    if(nrow(S_t) == 0) stop("Current treatment data missing or input incorrectly.")
+    if(is.null(S_c)) warning("Current control data missing or input incorrectly.")
+    if(is.null(S0_t) & is.null(S0_c)) warning("Historical data input incorrectly.")
+  }
+
+  posterior_treatment <- posterior_survival(
     S             = S_t,
     S0            = S0_t,
+    surv_time     = surv_time,
     alpha_max     = alpha_max[1],
+    fix_alpha     = fix_alpha,
     a0            = a0,
     b0            = b0,
-    surv_time     = surv_time,
     number_mcmc   = number_mcmc,
     weibull_shape = weibull_shape[1],
     weibull_scale = weibull_scale[1],
     two_side      = two_side,
-    breaks        = breaks)
+    breaks        = breaks,
+    arm2          = arm2)
 
   if(arm2){
-    posterior_control <- survival_posterior(
+    posterior_control <- posterior_survival(
       S             = S_c,
       S0            = S0_c,
       alpha_max     = alpha_max[2],
+      fix_alpha     = fix_alpha,
       a0            = a0,
       b0            = b0,
       surv_time     = surv_time,
@@ -306,7 +321,8 @@ setMethod("bdpsurvival",
       weibull_shape = weibull_shape[2],
       weibull_scale = weibull_scale[2],
       two_side      = two_side,
-      breaks        = breaks)
+      breaks        = breaks,
+      arm2          = arm2)
   } else{
     posterior_control <- NULL
   }
@@ -321,7 +337,9 @@ setMethod("bdpsurvival",
   args1 <- list(S_t           = S_t,
                 S_c           = S_c,
                 S0_t          = S0_t,
+                S0_c          = S0_c,
                 alpha_max     = alpha_max,
+                fix_alpha     = fix_alpha,
                 a0            = a0,
                 b0            = b0,
                 surv_time     = surv_time,
@@ -329,7 +347,9 @@ setMethod("bdpsurvival",
                 weibull_scale = weibull_scale,
                 weibull_shape = weibull_shape,
                 two_side      = two_side,
-                breaks        = breaks)
+                arm2          = arm2,
+                breaks        = breaks,
+                data          = data)
 
   me <- list(posterior_treatment = posterior_treatment,
              posterior_control   = posterior_control,
@@ -342,93 +362,175 @@ setMethod("bdpsurvival",
 })
 
 
+
+
 ################################################################################
-### Helper functions
+# Survival posterior estimation
+# 1) Estimate the discount function (if current+historical data both present)
+# 2) Estimate the posterior of the augmented data
 ################################################################################
-### Estimate discount function weight for prior data assuming survival outcome
-### - Use approximation to the hazard ratio
-discount_function_survival <- function(S, S0, alpha_max, a0, b0, number_mcmc,
-                                       weibull_shape, weibull_scale, two_side){
+### Combine  loss function and posterior estimation into one function
+posterior_survival <- function(S, S0, surv_time, alpha_max, fix_alpha, a0, b0,
+                               number_mcmc, weibull_shape, weibull_scale,
+                               two_side, breaks, arm2){
+
 
   ### Extract intervals and count number of intervals
-  ### - Below, S_int should equal S0_int
-  S_int  <- levels(S$interval)
-  S0_int <- levels(S0$interval)
-  nInt   <- length(S_int)
-  n0Int  <- length(S0_int)
+  ### - It should be that S_int equals S0_int
+  if(!is.null(S)){
+    S_int  <- levels(S$interval)
+    nInt   <- length(S_int)
+  }
+
+  if(!is.null(S0)){
+    S0_int  <- levels(S0$interval)
+    n0Int   <- length(S0_int)
+  }
 
   interval <- NULL
 
-  ### Compute posterior of hazard rate comparing current and historical
-  a_post <- b_post <- numeric(nInt)
-  a_post0 <- b_post0 <- numeric(n0Int)
 
-  hazard_post_aug_t <- hazard_post_aug_t0 <- matrix(NA, number_mcmc, nInt)
+  ##############################################################################
+  # Discount function
+  # - Comparison is made only if both S and S0 are present
+  ##############################################################################
+  # Compute hazards for historical and current data efficiently
+  if(!is.null(S) & !is.null(S0)){
+    ### Compute posterior of interval hazards
+    a_post  <- b_post  <- numeric(nInt)
+    a_post0 <- b_post0 <- numeric(n0Int)
 
-  ### Compute posterior values
-  for(i in 1:nInt){
-    a_post[i] <- a0 + sum(subset(S, interval==S_int[i])$status)
-    b_post[i] <- b0 + sum(subset(S, interval==S_int[i])$exposure)
+    posterior_flat_hazard <- prior_hazard <- matrix(NA, number_mcmc, nInt)
 
-    a_post0[i] <- a0 + sum(subset(S0, interval==S0_int[i])$status)
-    b_post0[i] <- b0 + sum(subset(S0, interval==S0_int[i])$exposure)
+    ### Compute posterior values
+    for(i in 1:nInt){
+      a_post[i] <- a0 + sum(subset(S, interval==S_int[i])$status)
+      b_post[i] <- b0 + sum(subset(S, interval==S_int[i])$exposure)
 
-    ### Add on a very small value to avoid underflow
-    hazard_post_aug_t[,i]  <- rgamma(number_mcmc, a_post[i],  b_post[i])+1e-12
-    hazard_post_aug_t0[,i] <- rgamma(number_mcmc, a_post0[i], b_post0[i])+1e-12
+      a_post0[i] <- a0 + sum(subset(S0, interval==S0_int[i])$status)
+      b_post0[i] <- b0 + sum(subset(S0, interval==S0_int[i])$exposure)
+
+      ### Interval hazards - add on a very small value to avoid underflow
+      posterior_flat_hazard[,i]  <- rgamma(number_mcmc, a_post[i],  b_post[i])+1e-12
+      prior_hazard[,i]           <- rgamma(number_mcmc, a_post0[i], b_post0[i])+1e-12
+    }
+  } else if(!is.null(S) & is.null(S0)){
+    ### Compute posterior of interval hazards
+    a_post  <- b_post  <- numeric(nInt)
+
+    posterior_flat_hazard <- matrix(NA, number_mcmc, nInt)
+    prior_hazard          <- NULL
+
+    ### Compute posterior values
+    for(i in 1:nInt){
+      a_post[i] <- a0 + sum(subset(S, interval==S_int[i])$status)
+      b_post[i] <- b0 + sum(subset(S, interval==S_int[i])$exposure)
+
+      ### Interval hazards - add on a very small value to avoid underflow
+      posterior_flat_hazard[,i]  <- rgamma(number_mcmc, a_post[i],  b_post[i])+1e-12
+    }
+  } else if(is.null(S) & !is.null(S0)) {
+    ### Compute posterior of interval hazards
+    a_post0 <- b_post0 <- numeric(n0Int)
+
+    prior_hazard          <- matrix(NA, number_mcmc, nInt)
+    posterior_flat_hazard <- NULL
+
+    ### Compute posterior values
+    for(i in 1:n0Int){
+      a_post0[i] <- a0 + sum(subset(S0, interval==S0_int[i])$status)
+      b_post0[i] <- b0 + sum(subset(S0, interval==S0_int[i])$exposure)
+
+      ### Interval hazards - add on a very small value to avoid underflow
+      prior_hazard[,i]           <- rgamma(number_mcmc, a_post0[i], b_post0[i])+1e-12
+    }
   }
 
-  ### Weight historical data via (approximate) hazard ratio comparing
-  ### current vs historical
-  R0     <- log(hazard_post_aug_t0)-log(hazard_post_aug_t)
-  V0     <- 1/apply(R0,2,var)
-  logHR0 <- R0%*%V0/sum(V0)  #weighted average  of SE^2
 
-  p_test <- mean(logHR0 > 0)   #larger is higher failure
+  ### If only one of S or S0 is present, return related hazard and (if !arm2), return survival
+  if(!is.null(S) & is.null(S0)){
+    posterior_hazard <- posterior_flat_hazard
 
-  if(weibull_shape %in% c(0,Inf)){
-    if(weibull_shape == 0){
-      alpha_discount <- 0
+    if(!arm2){
+      posterior_survival <- posterior_flat_survival <- 1 - ppexp(q=surv_time,
+                                                                 x=posterior_hazard,
+                                                                 cuts = c(0,breaks))
+      prior_survival      <- NULL
     } else{
-      alpha_discount <- 1
+      posterior_survival <- posterior_flat_survival <- prior_survival <- NULL
+    }
+  } else if(is.null(S) & !is.null(S0)){
+    posterior_hazard <- prior_hazard
+
+    if(!arm2){
+      posterior_survival <- prior_survival <- 1 - ppexp(q=surv_time,
+                                                        x=posterior_hazard,
+                                                        cuts = c(0,breaks))
+      posterior_flat_survival <- NULL
+    } else{
+      posterior_survival  <- prior_survival <- posterior_flat_survival <- NULL
+    }
+  }
+
+  if(!(!is.null(S) & !is.null(S0))){
+    return(list(alpha_discount          = NULL,
+                p_hat                   = NULL,
+                posterior_survival      = posterior_survival,
+                posterior_flat_survival = posterior_flat_survival,
+                prior_survival          = prior_survival,
+                posterior_hazard        = posterior_hazard,
+                posterior_flat_hazard   = posterior_flat_hazard,
+                prior_hazard            = prior_hazard))
+  }
+
+
+  ### If both S and S0 are present, carry out the comparison and compute alpha
+  if(!arm2){
+    ### Posterior survival probability
+    posterior_flat_survival  <- 1 - ppexp(q=surv_time, x=posterior_flat_hazard, cuts = c(0,breaks))
+    prior_survival           <- 1 - ppexp(q=surv_time, x=prior_hazard, cuts = c(0,breaks))
+
+    ### Compute probability that survival is greater for current vs historical
+    p_test <- mean(posterior_flat_survival > prior_survival)   # higher is better survival
+
+    if(fix_alpha){
+      alpha_discount <- alpha_max
+    } else{
+      if (!two_side) {
+        alpha_discount <- pweibull(p_test, shape=weibull_shape, scale=weibull_scale)*alpha_max
+      } else if (two_side){
+        p_test1    <- ifelse(p_test > 0.5, 1 - p_test, p_test)
+        alpha_discount <- pweibull(p_test1, shape=weibull_shape, scale=weibull_scale)*alpha_max
+      }
     }
   } else{
-    if (two_side == 0) {
-      alpha_discount <- pweibull(p_test, shape=weibull_shape, scale=weibull_scale)*alpha_max
-    } else if (two_side == 1){
-      p_test1    <- ifelse(p_test > 0.5, 1 - p_test, p_test)
-      alpha_discount <- pweibull(p_test1, shape=weibull_shape, scale=weibull_scale)*alpha_max
+    ### Weight historical data via (approximate) hazard ratio comparing
+    ### current vs historical
+    R0     <- log(prior_hazard)-log(posterior_flat_hazard)
+    V0     <- 1/apply(R0,2,var)
+    logHR0 <- R0%*%V0/sum(V0)    #weighted average  of SE^2
+
+    p_test <- mean(logHR0 > 0)   #larger is higher failure
+
+    if(fix_alpha){
+      alpha_discount <- alpha_max
+    } else{
+      if (!two_side) {
+        alpha_discount <- pweibull(p_test, shape=weibull_shape, scale=weibull_scale)*alpha_max
+      } else if (two_side){
+        p_test1    <- ifelse(p_test > 0.5, 1 - p_test, p_test)
+        alpha_discount <- pweibull(p_test1, shape=weibull_shape, scale=weibull_scale)*alpha_max
+      }
     }
   }
 
-  return(list(alpha_discount = alpha_discount,
-              pvalue         = p_test,
-              posterior_flat = hazard_post_aug_t,
-              prior          = hazard_post_aug_t0))
-}
 
 
-### Posterior estimation for piecewise exponential distribution given
-### alpha_loss.
-### - For 1 arm (OPC), comparison is probability of survival at user input time
-### - For 2 arm (RCT), comparison is hazard ratio of treatment vs control
-posterior_augment_survival <- function(S, S0, alpha_discount, a0, b0,
-                                       number_mcmc, surv_time, breaks){
-
-  ### Extract intervals and count number of intervals
-  ### - Below, S_int should equal S0_int
-  S_int  <- levels(S$interval)
-  S0_int <- levels(S0$interval)
-  nInt   <- length(S_int)
-  n0Int  <- length(S0_int)
-
-  interval <- NULL
-
-  ### Compute posterior of hazard rate comparing current and historical
-  a_post <- b_post <- numeric(nInt)
-  a_post0 <- b_post0 <- numeric(n0Int)
-
-  hazard_post_aug_t <- matrix(NA, number_mcmc, nInt)
+  ##############################################################################
+  # Posterior augmentation via the interval hazards
+  # - If current or historical data are missing, this will not augment(see above)
+  ##############################################################################
+  posterior_hazard <- matrix(NA, number_mcmc, nInt)
 
   for(i in 1:nInt){
     a_post0[i] <- a0 + sum(subset(S0, interval==S0_int[i])$status)
@@ -438,81 +540,41 @@ posterior_augment_survival <- function(S, S0, alpha_discount, a0, b0,
     b_post[i] <- b0 + sum(subset(S, interval==S_int[i])$exposure)
 
     ### Add on a very small value to avoid underflow
-    hazard_post_aug_t[,i]  <- rgamma(number_mcmc,
-                                     a_post[i]+a_post0[i]*alpha_discount,
-                                     b_post[i]+b_post0[i]*alpha_discount) + 1e-12
- }
+    posterior_hazard[,i]  <- rgamma(number_mcmc,
+                                    a_post[i]+a_post0[i]*alpha_discount,
+                                    b_post[i]+b_post0[i]*alpha_discount) + 1e-12
+  }
 
-  ### Posterior of survival time (statistic of interest for 1arm)
-  pwe_cdf <- ppexp(q    = surv_time,
-                   x    = hazard_post_aug_t,
-                   cuts = c(0,breaks))
+  ### Posterior of survival time (if !arm2)
+  if(!arm2){
+    posterior_survival <- 1-ppexp(q=surv_time, x=posterior_hazard, cuts=c(0,breaks))
+  } else{
+    posterior_survival <- NULL
+  }
 
-  surv_time_posterior <- 1-pwe_cdf
 
-  return(list(cdf                 = pwe_cdf,
-              surv_time_posterior = surv_time_posterior,
-              posterior           = hazard_post_aug_t))
+  return(list(alpha_discount          = alpha_discount,
+              p_hat                   = p_test,
+              posterior_survival      = posterior_survival,
+              posterior_flat_survival = posterior_flat_survival,
+              prior_survival          = prior_survival,
+              posterior_hazard        = posterior_hazard,
+              posterior_flat_hazard   = posterior_flat_hazard,
+              prior_hazard            = prior_hazard))
 }
 
 
-### Combine  loss function and posterior estimation into one function
-survival_posterior <- function(S, S0, alpha_max, a0, b0, surv_time,
-                               number_mcmc, weibull_shape, weibull_scale,
-                               two_side, breaks){
 
-  alpha_discount <- discount_function_survival(S             = S,
-                                               S0            = S0,
-                                               alpha_max     = alpha_max,
-                                               a0            = a0,
-                                               b0            = b0,
-                                               number_mcmc   = number_mcmc,
-                                               weibull_shape = weibull_shape,
-                                               weibull_scale = weibull_scale,
-                                               two_side      = two_side)
 
-  posterior <- posterior_augment_survival(
-    S              = S,
-    S0             = S0,
-    alpha_discount = alpha_discount$alpha_discount,
-    a0             = a0,
-    b0             = b0,
-    number_mcmc    = number_mcmc,
-    surv_time      = surv_time,
-    breaks         = breaks)
-
-    return(list(alpha_discount = alpha_discount$alpha_discount,
-                pvalue         = alpha_discount$pvalue,
-                posterior      = posterior,
-                posterior_flat = alpha_discount$posterior_flat,
-                prior          = alpha_discount$prior))
-}
 
 ### Create final result class
 final_survival <- function(posterior_treatment, posterior_control, arm2=FALSE,
                            surv_time, breaks){
 
-  ### if(opc) plot survival prob.
-  treatment_posterior      <- posterior_treatment$posterior$surv_time_posterior
-  treatment_posterior_flat <- ppexp(surv_time, posterior_treatment$posterior_flat, c(0,breaks))
-  treatment_prior          <- ppexp(surv_time, posterior_treatment$prior, c(0,breaks))
 
-  density_post_treatment  <- density(treatment_posterior,
-                                     adjust = 0.5)
-  density_flat_treatment  <- density(treatment_posterior_flat,
-                                     adjust = 0.5)
-  density_prior_treatment <- density(treatment_prior,
-                                     adjust = 0.5)
-
-  if(!arm2){
-    treatmentpost <- posterior_treatment$posterior$surv_time_posterior
-
-    return(list(density_post_treatment  = density_post_treatment,
-                density_flat_treatment  = density_flat_treatment,
-                density_prior_treatment = density_prior_treatment,
-                treatmentpost           = treatmentpost))
-  } else if(!is.null(posterior_control) & arm2){
-    ### TODO: finalize below code
+  ### Two-arm trial densities only
+  if(!is.null(posterior_control) & arm2){
+    ### Finalize below code
     density_post_control  <- density(posterior_control$posterior$posterior,
                                      adjust = 0.5)
     density_flat_control  <- density(posterior_control$posterior_flat,
@@ -527,10 +589,7 @@ final_survival <- function(posterior_treatment, posterior_control, arm2=FALSE,
 
     treatmentpost <- logHR0
 
-    return(list(density_post_treatment  = density_post_treatment,
-                density_flat_treatment  = density_flat_treatment,
-                density_prior_treatment = density_prior_treatment,
-                density_post_control    = density_post_control,
+    return(list(density_post_control    = density_post_control,
                 density_flat_control    = density_flat_control,
                 density_prior_control   = density_prior_control,
                 treatmentpost           = treatmentpost))

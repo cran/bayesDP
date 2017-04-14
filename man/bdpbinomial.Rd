@@ -7,8 +7,8 @@
 \usage{
 bdpbinomial(y_t = NULL, N_t = NULL, y0_t = NULL, N0_t = NULL,
   y_c = NULL, N_c = NULL, y0_c = NULL, N0_c = NULL, alpha_max = 1,
-  a0 = 1, b0 = 1, number_mcmc = 10000, weibull_scale = 0.135,
-  weibull_shape = 3, two_side = 1)
+  fix_alpha = FALSE, a0 = 1, b0 = 1, number_mcmc = 10000,
+  weibull_scale = 0.135, weibull_shape = 3, two_side = TRUE)
 }
 \arguments{
 \item{y_t}{scalar. Number of events for the current treatment group.}
@@ -32,6 +32,8 @@ Default is 1. For a two-arm trial, users may specify a vector of two values
 where the first value is used to weight the historical treatment group and
 the second value is used to weight the historical control group.}
 
+\item{fix_alpha}{logical. Fix alpha at alpha_max? Default value is FALSE.}
+
 \item{a0}{scalar. Prior value for the beta rate. Default is 1.}
 
 \item{b0}{scalar. Prior value for the beta rate. Default is 1.}
@@ -41,13 +43,10 @@ simulations. Default is 10000.}
 
 \item{weibull_scale}{scalar. Scale parameter of the Weibull discount function
 used to compute alpha, the weight parameter of the historical data. Default
-value is 0.135. Two values have special treatment: 0 and Inf. For
-weibull_scale = 0, alpha is set to 0, i.e., no weight. For
-weibull_scale = Inf, alpha is set to 1, i.e., full weight. For a two-arm
-trial, users may specify a vector of two values where the first value is
-used to estimate the weight of the historical treatment group and the
-second value is used to estimate the weight of the historical control
-group.}
+value is 0.135. For a two-arm trial, users may specify a vector of two values
+where the first value is used to estimate the weight of the historical
+treatment group and the second value is used to estimate the weight of the
+historical control group.}
 
 \item{weibull_shape}{scalar. Shape parameter of the Weibull discount function
 used to compute alpha, the weight parameter of the historical data. Default
@@ -56,8 +55,8 @@ where the first value is used to estimate the weight of the historical
 treatment group and the second value is used to estimate the weight of the
 historical control group.}
 
-\item{two_side}{scalar. Indicator of two-sided test for the discount
-function. Default value is 1.}
+\item{two_side}{logical. Indicator of two-sided test for the discount
+function. Default value is TRUE.}
 }
 \value{
 \code{bdpbinomial} returns an object of class "bdpbinomial".
@@ -74,7 +73,7 @@ the following components:
    \itemize{
      \item{\code{alpha_discount}}{
        numeric. Alpha value, the weighting parameter of the historical data.}
-     \item{\code{pvalue}}{
+     \item{\code{p_hat}}{
        numeric. The posterior probability of the stochastic comparison
        between the current and historical data.}
      \item{\code{posterior}}{
@@ -110,7 +109,7 @@ the following components:
      \item{\code{density_prior_control}}{
        object of class \code{density}. Used internally to plot the density of
        the control group (if present) prior.}
-     \item{\code{TestMinusControl_post}}{
+     \item{\code{comparison_posterior}}{
        vector. If control group is present, vector contains posterior
        distribution of the effect estimate of treatment vs. control.
        control groups.}

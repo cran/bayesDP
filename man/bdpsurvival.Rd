@@ -6,8 +6,9 @@
 \title{Bayesian Discount Prior: Survival Analysis}
 \usage{
 bdpsurvival(formula = formula, data = data, breaks = NULL, a0 = 0.1,
-  b0 = 0.1, surv_time = NULL, alpha_max = 1, number_mcmc = 10000,
-  weibull_scale = 0.135, weibull_shape = 3, two_side = 1)
+  b0 = 0.1, surv_time = NULL, alpha_max = 1, fix_alpha = FALSE,
+  number_mcmc = 10000, weibull_scale = 0.135, weibull_shape = 3,
+  two_side = TRUE)
 }
 \arguments{
 \item{formula}{an object of class "formula." Must have a survival object on
@@ -17,34 +18,33 @@ historical. See "Details" for more information.}
 \item{data}{data frame. A data frame with columns 'time', 'status',
 'treatment', and historical.' See "Details" for required structure.}
 
-\item{breaks}{vector. Breaks (intervals) used to compose the breaks of the
-piecewise exponential model.}
+\item{breaks}{vector. Breaks (interval starts) used to compose the breaks of the
+piecewise exponential model. Do not include zero.}
 
 \item{a0}{scalar. Prior value for the gamma shape. Default is 1.}
 
 \item{b0}{scalar. Prior value for the gamma rate. Default is 1.}
 
 \item{surv_time}{scalar. Survival time of interest for computing the the
-probability of survival for a single arm, i.e., an OPC trial. Default is
-median survival time.}
+probability of survival for a single arm (OPC) trial. Default is
+overall, i.e., current+historical, median survival time.}
 
 \item{alpha_max}{scalar. Maximum weight the discount function can apply.
 Default is 1. For a two-arm trial, users may specify a vector of two values
 where the first value is used to weight the historical treatment group and
 the second value is used to weight the historical control group.}
 
+\item{fix_alpha}{logical. Fix alpha at alpha_max? Default value is FALSE.}
+
 \item{number_mcmc}{scalar. Number of Markov Chain Monte Carlo (MCMC)
 simulations. Default is 10000.}
 
 \item{weibull_scale}{scalar. Scale parameter of the Weibull discount function
 used to compute alpha, the weight parameter of the historical data. Default
-value is 0.135. Two values have special treatment: 0 and Inf. For
-weibull_scale = 0, alpha is set to 0, i.e., no weight. For
-weibull_scale = Inf, alpha is set to 1, i.e., full weight. For a two-arm
-trial, users may specify a vector of two values where the first value is
-used to estimate the weight of the historical treatment group and the
-second value is used to estimate the weight of the historical control
-group.}
+value is 0.135. For a two-arm trial, users may specify a vector of two
+values where the first value is used to estimate the weight of the
+historical treatment group and the second value is used to estimate the
+weight of the historical control group.}
 
 \item{weibull_shape}{scalar. Shape parameter of the Weibull discount function
 used to compute alpha, the weight parameter of the historical data. Default
@@ -53,8 +53,8 @@ where the first value is used to estimate the weight of the historical
 treatment group and the second value is used to estimate the weight of the
 historical control group.}
 
-\item{two_side}{scalar. Indicator of two-sided test for the discount
-function. Default value is 1.}
+\item{two_side}{logical. Indicator of two-sided test for the discount
+function. Default value is TRUE.}
 }
 \value{
 \code{bdpsurvival} returns an object of class "bdpsurvival".
@@ -70,7 +70,7 @@ the following components:
    \itemize{
      \item{\code{alpha_discount}}{
        numeric. Alpha value, the weighting parameter of the historical data.}
-     \item{\code{pvalue}}{
+     \item{\code{p_hat}}{
        numeric. The posterior probability of the stochastic comparison
        between the current and historical data.}
      \item{\code{posterior}}{
