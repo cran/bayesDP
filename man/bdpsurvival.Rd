@@ -19,13 +19,16 @@ historical. See "Details" for more information.}
 'treatment', and historical.' See "Details" for required structure.}
 
 \item{breaks}{vector. Breaks (interval starts) used to compose the breaks of the
-piecewise exponential model. Do not include zero.}
+piecewise exponential model. Do not include zero. Default breaks are the
+quantiles of the input times.}
 
-\item{a0}{scalar. Prior value for the gamma shape. Default is 1.}
+\item{a0}{scalar. Prior value for the gamma shape of the piecewise
+exponential hazards. Default is 1.}
 
-\item{b0}{scalar. Prior value for the gamma rate. Default is 1.}
+\item{b0}{scalar. Prior value for the gamma rate of the piecewise
+exponential hazards. Default is 1.}
 
-\item{surv_time}{scalar. Survival time of interest for computing the the
+\item{surv_time}{scalar. Survival time of interest for computing the
 probability of survival for a single arm (OPC) trial. Default is
 overall, i.e., current+historical, median survival time.}
 
@@ -36,8 +39,7 @@ the second value is used to weight the historical control group.}
 
 \item{fix_alpha}{logical. Fix alpha at alpha_max? Default value is FALSE.}
 
-\item{number_mcmc}{scalar. Number of Markov Chain Monte Carlo (MCMC)
-simulations. Default is 10000.}
+\item{number_mcmc}{scalar. Number of Monte Carlo simulations. Default is 10000.}
 
 \item{weibull_scale}{scalar. Scale parameter of the Weibull discount function
 used to compute alpha, the weight parameter of the historical data. Default
@@ -58,8 +60,8 @@ function. Default value is TRUE.}
 }
 \value{
 \code{bdpsurvival} returns an object of class "bdpsurvival".
-The functions \code{summary} and \code{print} are used to obtain and
-print a summary of the results, including user inputs. The \code{plot}
+The functions \code{\link[=summary,bdpsurvival-method]{summary}} and \code{\link[=print,bdpsurvival-method]{print}} are used to obtain and
+print a summary of the results, including user inputs. The \code{\link[=plot,bdpsurvival-method]{plot}}
 function displays visual outputs as well.
 
 An object of class "\code{bdpsurvival}" is a list containing at least
@@ -73,42 +75,43 @@ the following components:
      \item{\code{p_hat}}{
        numeric. The posterior probability of the stochastic comparison
        between the current and historical data.}
-     \item{\code{posterior}}{
-       list. Entries contain \code{cdf}, a vector of the posterior cdf of the
-       piecewise exponentialdistribution; \code{surv_time_posterior}, a
-       vector with the posterior of the survival probability; and
-       \code{posterior}, a matrix of the posteriors of each of the piecewise
-       hazards.}
-     \item{\code{posterior_flat}}{
-       matrix. The distributions of the current treatment group piecewise
-       hazard rates.}
-     \item{\code{prior}}{
-       matrix. The distributions of the historical treatment group piecewise
-       hazard rates.}
+     \item{\code{posterior_survival}}{
+       vector. If one-arm trial, a vector of length \code{number_mcmc}
+       containing the posterior probability draws of survival at
+       \code{surv_time}.}
+     \item{\code{posterior_flat_survival}}{
+       vector. If one-arm trial, a vector of length \code{number_mcmc}
+       containing the probability draws of survival at \code{surv_time}
+       for the current treatment not augmented by historical treatment.}
+     \item{\code{prior_survival}}{
+       vector. If one-arm trial, a vector of length \code{number_mcmc}
+       containing the probability draws of survival at \code{surv_time}
+       for the historical treatment.}
+     \item{\code{posterior_hazard}}{
+       matrix. A matrix with \code{number_mcmc} rows and \code{length(breaks)}
+       columns containing the posterior draws of the piecewise hazards
+       for each interval break point.}
+     \item{\code{posterior_flat_hazard}}{
+       matrix. A matrix with \code{number_mcmc} rows and \code{length(breaks)}
+       columns containing the draws of piecewise hazards for each interval
+       break point for current treatment not augmented by historical treatment.}
+     \item{\code{prior_hazard}}{
+       matrix. A matrix with \code{number_mcmc} rows and \code{length(breaks)}
+       columns containing the draws of piecewise hazards for each interval break point
+       for historical treatment.}
   }
- \item{\code{f1}}{
-   list. Entries contain values related to the posterior effect:}
-   \itemize{
-     \item{\code{density_post_treatment}}{
-       object of class \code{density}. Used internally to plot the density of
-       the treatment group posterior.}
-     \item{\code{density_flat_treatment}}{
-       object of class \code{density}. Used internally to plot the density of
-       the treatment group "flat" distribution.}
-     \item{\code{density_prior_treatment}}{
-       object of class \code{density}. Used internally to plot the density of
-       the treatment group prior.}
-     \item{\code{treatmentpost}}{
-       vector. Used internally to plot the posterior distribution of the
-       survival probability.}
-  }
+ \item{\code{posterior_control}}{
+   list. If two-arm trial, contains values related to the control group
+   analagous to the \code{posterior_treatment} output.}
  \item{\code{args1}}{
    list. Entries contain user inputs. In addition, the following elements
    are ouput:}
    \itemize{
-     \item{\code{S_t} and \code{S0_t}}{
-       survival objects. Used internally pass survival data between
+     \item{\code{S_t}, \code{S_c}, \code{S0_t}, \code{S0_c}}{
+       survival objects. Used internally to pass survival data between
        functions.}
+     \item{\code{arm2}}{
+       logical. Used internally to indicate one-arm or two-arm analysis.}
   }
 }
 }
@@ -116,7 +119,8 @@ the following components:
 \code{bdpsurvival} is used to estimate the survival probability
   (single arm trial; OPC) or hazard ratio (two-arm trial; RCT) for
   right-censored data using the survival analysis implementation of the
-  Bayesian discount prior.
+  Bayesian discount prior. This code is modeled after
+  the methodologies developed in Haddad et al. (2017).
 }
 \details{
 \code{bdpsurvival} uses a two-stage approach for determining the
@@ -128,45 +132,101 @@ the following components:
   Disagreement between current and historical data is determined by stochastically
   comparing the respective posterior distributions under noninformative priors.
   With a single arm survival data analysis, the comparison is the
-  proability (\code{p}) that the current survial is less than the historical
-  survival. The comparison metric \code{p} is then
+  probability (\code{p}) that the current survival is less than the historical
+  survival. For a two-arm survival data, analysis the comparison is the
+  probability that the hazard ratio comparing treatment and control is
+  different from zero. The comparison metric \code{p} is then
   input into the Weibull discount function and the final strength of the
   historical data is returned (alpha).
 
-In the second stage, posterior estimation is performed where the discount
+  In the second stage, posterior estimation is performed where the discount
   function parameter, \code{alpha}, is used as a fixed value for all posterior
   estimation procedures.
 
- To carry out a single arm (OPC) analysis, data for the current and
- historical treatments are specified in a dataframe. The dataframe must have
- columns with names 'time', 'status', 'treatment', and 'historical.' Column
- 'time' is the survival (censor) time of the event and 'status' is the
- event indicator. The column 'treatment' is used to indicate which observations
- are in the treatment and control group. A value of 1 indicates that the
- observation is in the treatment group. The column 'historical' indicates
- whether the observation is from the historical data (1) or current data (0).
- The results are then based on the posterior distribution of the current data
- augmented by the historical data.
+  To carry out a single arm (OPC) analysis, data for the current and
+  historical treatments are specified in a data frame. The data frame must have
+  columns with names 'time', 'status', 'treatment', and 'historical.' Column
+  'time' is the survival (censor) time of the event and 'status' is the
+  event indicator. The column 'treatment' is used to indicate which observations
+  are in the treatment and control group. A value of 1 indicates that the
+  observation is in the treatment group. The column 'historical' indicates
+  whether the observation is from the historical data (1) or current data (0).
+  The results are then based on the posterior probability of survival at
+  \code{surv_time} for the current data augmented by the historical data.
 
- Two-arm (RCT) analyses are not available with this release.
+  Two-arm (RCT) analyses are specified similarly to a single arm trial. Again
+  the input data frame must have columns with names 'time', 'status',
+  'treatment', and 'historical.' Column 'time' is the survival (censor) time
+  of the event and 'status' is the event indicator. Now, the 'treatment'
+  column must use 0 to indicate the control group. The current data are
+  augmented by historical data (if present) and the results are then based
+  on the posterior distribution of the hazard ratio between the treatment
+  and control groups.
+
+  For more details, see the \code{bdpsurvival} vignette: \cr
+  \code{vignette("bdpsurvival-vignette", package="bayesDP")}
 }
 \examples{
-# One-arm trial (OPC) example
+# One-arm trial (OPC) example - survival probability at 5 years
 # Simulate survival data for a single arm (OPC) trial
 time   <- c(rexp(50, rate=1/20), rexp(50, rate=1/10))
 status <- c(rexp(50, rate=1/30), rexp(50, rate=1/30))
 status <- ifelse(time < status, 1, 0)
 
-# Collect data into a dataframe
+# Collect data into a data frame
 example_surv_1arm <- data.frame(status     = status,
                                 time       = time,
                                 historical = c(rep(1,50),rep(0,50)),
                                 treatment  = 1)
 
-fitSurv <- bdpsurvival(Surv(time, status) ~ historical + treatment,
-                       data = example_surv_1arm)
+fit1 <- bdpsurvival(Surv(time, status) ~ historical + treatment,
+                    data = example_surv_1arm,
+                    surv_time = 5)
 
-summary(fitSurv)
+print(fit1)
+\dontrun{
+plot(fit1)
+}
+
+# Two-arm trial (OPC) example
+# Simulate survival data for a two-arm trial
+time   <- c(rexp(50, rate=1/20), # Current treatment
+            rexp(50, rate=1/10), # Current control
+            rexp(50, rate=1/30), # Historical treatment
+            rexp(50, rate=1/5))  # Historical control
+status <- rexp(200, rate=1/40)
+status <- ifelse(time < status, 1, 0)
+
+# Collect data into a data frame
+example_surv_2arm <- data.frame(status     = status,
+                                time       = time,
+                                historical = c(rep(0,100),rep(1,100)),
+                                treatment  = c(rep(1,50),rep(0,50),rep(1,50),rep(0,50)))
+
+fit2 <- bdpsurvival(Surv(time, status) ~ historical + treatment,
+                       data = example_surv_2arm)
+
+summary(fit2)
+
+### Fix alpha at 1
+fit2_1 <- bdpsurvival(Surv(time, status) ~ historical + treatment,
+                      data = example_surv_2arm,
+                      fix_alpha = TRUE)
+
+summary(fit2_1)
 
 
 }
+\references{
+Haddad, T., Himes, A., Thompson, L., Irony, T., Nair, R. MDIC Computer
+  Modeling and Simulation working group.(2017) Incorporation of stochastic
+  engineering models as prior information in Bayesian medical device trials.
+  \emph{Journal of Biopharmaceutical Statistics}, 1-15.
+}
+\seealso{
+\code{\link[=summary,bdpsurvival-method]{summary}},
+  \code{\link[=print,bdpsurvival-method]{print}},
+  and \code{\link[=plot,bdpsurvival-method]{plot}} for details of each of the
+  supported methods.
+}
+

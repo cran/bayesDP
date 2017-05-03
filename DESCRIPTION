@@ -1,10 +1,10 @@
 Package: bayesDP
 Type: Package
 Title: Tools for the Bayesian Discount Prior Function
-Version: 1.0.2
-Date: 2017-04-13
+Version: 1.1.0
+Date: 2017-05-03
 Authors@R: c(person("Shawn", "Balcome", email = "sbalcome@mdic.org", role = c("cre")), person("Donnie", "Musgrove", email = "donald.r.musgrove@medtronic.com", role = c("aut")), person("Tarek", "Haddad", email = "tarek.d.haddad@medtronic.com", role = c("aut")), person("Christopher", "Jackson", email = "chris.jackson@mrc-bsu.cam.ac.uk", role = "ctb", comment="For the ppexp R code that was ported to C++."))
-Depends: ggplot2, survival, methods
+Depends: R (>= 3.2.3), ggplot2, survival, methods
 Description: Functions for data augmentation using the
     Bayesian discount prior function for 1 arm and 2 arm clinical trials.
 LazyLoad: yes
@@ -16,12 +16,13 @@ Maintainer: Shawn Balcome <sbalcome@mdic.org>
 Repository: CRAN
 Imports: Rcpp
 LinkingTo: Rcpp, RcppArmadillo
-RoxygenNote: 6.0.1
+RoxygenNote: 5.0.1
 Suggests: testthat, knitr, rmarkdown
-Packaged: 2017-04-14 16:31:52 UTC; Shawn Balcome
+VignetteBuilder: knitr
+Packaged: 2017-05-03 20:52:57 UTC; shawnbalcome
 Author: Shawn Balcome [cre],
   Donnie Musgrove [aut],
   Tarek Haddad [aut],
   Christopher Jackson [ctb] (For the ppexp R code that was ported to
     C++.)
-Date/Publication: 2017-04-14 16:43:56 UTC
+Date/Publication: 2017-05-03 21:06:01 UTC

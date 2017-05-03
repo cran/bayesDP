@@ -17,18 +17,14 @@ NULL
 #' @param mu_t scalar. Mean of the current treatment group.
 #' @param sigma_t scalar. Standard deviation of the current treatment group.
 #' @param N_t scalar. Number of observations of the current treatment group.
-#' @param mu0_t scalar. Mean of the historical treatment group. Required
-#'   for single arm (OPC) trials.
+#' @param mu0_t scalar. Mean of the historical treatment group.
 #' @param sigma0_t scalar. Standard deviation of the historical treatment
-#'  group. Required for single arm (OPC) trials.
+#'  group.
 #' @param N0_t scalar. Number of observations of the historical treatment
-#'  group. Required for single arm (OPC) trials.
-#' @param mu_c scalar. Mean of the current control group. Required for
-#'  two arm (RCT) trials.
+#'  group.
+#' @param mu_c scalar. Mean of the current control group.
 #' @param sigma_c scalar. Standard deviation of the current control group.
-#'  Required for two arm (RCT) trials.
 #' @param N_c scalar. Number of observations of the current control group.
-#'  Required for two arm (RCT) trials.
 #' @param mu0_c scalar. Mean of the historical control group.
 #' @param sigma0_c scalar. Standard deviation of the historical control group.
 #' @param N0_c scalar. Number of observations of the historical control group.
@@ -49,8 +45,7 @@ NULL
 #'   where the first value is used to estimate the weight of the historical
 #'   treatment group and the second value is used to estimate the weight of the
 #'   historical control group.
-#' @param number_mcmc scalar. Number of Markov Chain Monte Carlo (MCMC)
-#'   simulations. Default is 10000.
+#' @param number_mcmc scalar. Number of Monte Carlo simulations. Default is 10000.
 #' @param two_side logical. Indicator of two-sided test for the discount
 #'   function. Default value is TRUE.
 #' @details \code{bdpnormal} uses a two-stage approach for determining the
@@ -77,16 +72,20 @@ NULL
 #'  by the historical data.
 #'
 #'  To carry our a two-arm (RCT) analysis, data for the current treatment and
-#'  current control (\code{mu_c}, \code{sigma_c}, and \code{N_c}) must be input,
-#'  as well as at least one of the historical treatment and historical control
-#'  (\code{mu0_c}, \code{sigma0_c}, and \code{N0_c}). The results
-#'  are then based on the posterior distribution of the difference between
-#'  current treatment and control, augmented by available historical data.
+#'  at least one of current or historical control data must be input.
+#'  The results are then based on the posterior distribution of the difference
+#'  between current treatment and control, augmented by available historical data.
 #'
-#' @return \code{bdpnormal} returns an object of class "bdpnormal".
-#' The functions \code{\link{summary}} and \code{\link{print}} are used to obtain and
-#' print a summary of the results, including user inputs. The \code{\link{plot}}
-#' function displays visual outputs as well.
+#'   For more details, see the \code{bdpnormal} vignette: \cr
+#'   \code{vignette("bdpnormal-vignette", package="bayesDP")}
+#'
+#'
+#' @return \code{bdpnormal} returns an object of class "bdpnormal". The
+#'   functions \code{\link[=summary,bdpnormal-method]{summary}} and
+#'   \code{\link[=print,bdpnormal-method]{print}} are used to obtain and print
+#'   a summary of the results, including user inputs. The
+#'   \code{\link[=plot,bdpnormal-method]{plot}} function displays visual
+#'   outputs as well.
 #'
 #' An object of class \code{bdpnormal} is a list containing at least
 #' the following components:
@@ -100,51 +99,36 @@ NULL
 #'        numeric. The posterior probability of the stochastic comparison
 #'        between the current and historical data.}
 #'      \item{\code{posterior_mu}}{
-#'        vector. The posterior of the treatment group, incorporating the
-#'        weighted historical data.}
+#'        vector. A vector of length \code{number_mcmc} containing the posterior
+#'        mean of the treatment group. If historical treatment data is present,
+#'        the posterior incorporates the weighted historical data.}
 #'      \item{\code{posterior_sigma2}}{
-#'        vector. The posterior of the treatment group variance, incorporating the
-#'        weighted historical data.}
+#'        vector. A vector of length \code{number_mcmc} containing the posterior
+#'        variance of the treatment group. If historical treatment data is present,
+#'        the posterior incorporates the weighted historical data.}
 #'      \item{\code{posterior_flat_mu}}{
-#'        vector. The distribution of the current treatment group, i.e., no
-#'        incorporation of the historical data.}
+#'        vector. A vector of length \code{number_mcmc} containing
+#'        Monte Carlo samples of the mean of the current treatment group
+#'        under a flat/non-informative prior, i.e., no incorporation of the
+#'        historical data.}
 #'      \item{\code{posterior_flat_sigma2}}{
-#'        vector. The distribution of the current treatment group variance, i.e., no
-#'        incorporation of the historical data.}
+#'        vector. A vector of length \code{number_mcmc} containing
+#'        Monte Carlo samples of the standard deviation of the current treatment group
+#'        under a flat/non-informative prior, i.e., no incorporation of the
+#'        historical data.}
 #'      \item{\code{prior_mu}}{
-#'        vector. The distribution of the historical treatment group.}
+#'        vector. If historical treatment data is present, a vector of length
+#'        \code{number_mcmc} containing Monte Carlo samples of the mean
+#'        of the historical treatment group under a flat/non-informative prior.}
 #'      \item{\code{prior_sigma2}}{
-#'        vector. The distribution of the historical treatment group variance.}
+#'        vector. If historical treatment data is present, a vector of length
+#'        \code{number_mcmc} containing Monte Carlo samples of the standard deviation
+#'        of the historical treatment group under a flat/non-informative prior.}
 #'   }
 #'  \item{\code{posterior_control}}{
-#'    list. Similar entries as \code{posterior_treament}. Only present if
-#'    control group is specified.}
-#'  \item{\code{f1}}{
-#'    list. Entries contain values related to the posterior effect:}
-#'    \itemize{
-#'      \item{\code{density_post_treatment}}{
-#'        object of class \code{density}. Used internally to plot the density of
-#'        the treatment group posterior.}
-#'      \item{\code{density_flat_treatment}}{
-#'        object of class \code{density}. Used internally to plot the density of
-#'        the treatment group "flat" distribution.}
-#'      \item{\code{density_prior_treatment}}{
-#'        object of class \code{density}. Used internally to plot the density of
-#'        the treatment group prior.}
-#'      \item{\code{density_post_control}}{
-#'        object of class \code{density}. Used internally to plot the density of
-#'        the control group (if present) posterior.}
-#'      \item{\code{density_flat_control}}{
-#'        object of class \code{density}. Used internally to plot the density of
-#'        the control group (if present) "flat" distribution.}
-#'      \item{\code{density_prior_control}}{
-#'        object of class \code{density}. Used internally to plot the density of
-#'        the control group (if present) prior.}
-#'      \item{\code{TestMinusControl_post}}{
-#'        vector. If control group is present, vector contains posterior
-#'        distribution of the effect estimate of treatment vs. control.
-#'        control groups.}
-#'   }
+#'    list. Similar entries as \code{posterior_treament}. Only present if a
+#'    control group is specified.
+#'  }
 #'  \item{\code{args1}}{
 #'    list. Entries contain user inputs. In addition, the following elements
 #'    are ouput:}
@@ -158,18 +142,25 @@ NULL
 #'   }
 #' }
 #'
+#' @seealso \code{\link[=summary,bdpnormal-method]{summary}},
+#'   \code{\link[=print,bdpnormal-method]{print}},
+#'   and \code{\link[=plot,bdpnormal-method]{plot}} for details of each of the
+#'   supported methods.
+#'
 #' @references
 #' Haddad, T., Himes, A., Thompson, L., Irony, T., Nair, R. MDIC Computer
 #'   Modeling and Simulation working group.(2017) Incorporation of stochastic
 #'   engineering models as prior information in Bayesian medical device trials.
-#'   \emph{Journal of Biopharmaceutical Statistics}. To Appear.
+#'   \emph{Journal of Biopharmaceutical Statistics}, 1-15.
 #'
 #' @examples
 #' # One-arm trial (OPC) example
 #' fit <- bdpnormal(mu_t = 30, sigma_t = 10, N_t = 250,
 #'                  mu0_t = 50, sigma0_t = 5, N0_t = 250)
 #' summary(fit)
-#' #plot(fit)
+#' \dontrun{
+#' plot(fit)
+#' }
 #'
 #' # Two-arm (RCT) example
 #' fit2 <- bdpnormal(mu_t = 30, sigma_t = 10, N_t = 250,
@@ -177,16 +168,17 @@ NULL
 #'                   mu_c = 25, sigma_c = 10, N_c = 250,
 #'                   mu0_c = 50, sigma0_c = 5, N0_c = 250)
 #' summary(fit2)
-#' #plot(fit2)
+#' \dontrun{
+#' plot(fit2)
+#' }
 #'
 #' @rdname bdpnormal
 #' @import methods
-#' @importFrom stats density is.empty.model median model.offset model.response pweibull quantile rbeta rgamma rnorm var vcov
+#' @importFrom stats sd density is.empty.model median model.offset model.response pweibull quantile rbeta rgamma rnorm var vcov
 #' @aliases bdpnormal,ANY-method
 #' @export bdpnormal
 bdpnormal <- setClass("bdpnormal", slots = c(posterior_treatment = "list",
                                              posterior_control = "list",
-                                             f1 = "list",
                                              args1 = "list"))
 
 setGeneric("bdpnormal",
@@ -364,16 +356,10 @@ setMethod("bdpnormal",
       weibull_scale = weibull_scale[2],
       weibull_shape = weibull_shape[2],
       two_side      = two_side)
+  } else{
+    posterior_control <- NULL
   }
 
-  if (arm2 ==  TRUE){
-    f1 <- final_normal(posterior_treatment = posterior_treatment,
-                       posterior_control = posterior_control)
-  }
-  else{
-    f1 <- final_normal(posterior_treatment = posterior_treatment,
-                       posterior_control   = NULL)
-  }
 
   args1 <- list(mu_t          = mu_t,
                 sigma_t       = sigma_t,
@@ -396,22 +382,13 @@ setMethod("bdpnormal",
                 arm2          = arm2,
                 intent        = paste(intent,collapse=", "))
 
-  if (arm2){
-    me <- list(posterior_treatment = posterior_treatment,
-               posterior_control   = posterior_control,
-               f1                  = f1,
-               args1               = args1)
-  }
-  else{
-    me <- list(posterior_treatment = posterior_treatment,
-               f1                  = f1,
-               args1               = args1)
-  }
+  me <- list(posterior_treatment = posterior_treatment,
+             posterior_control   = posterior_control,
+             args1               = args1)
 
   class(me) <- "bdpnormal"
 
   return(me)
-
 })
 
 
@@ -452,22 +429,21 @@ posterior_normal <- function(mu, sigma, N, mu0, sigma0, N0, alpha_max,
   if(!is.null(N) & !is.null(N0)){
 
     ### Test of model vs real
-    p_test <- mean(posterior_flat_mu < prior_mu)   # larger is higher failure
+    p_hat <- mean(posterior_flat_mu < prior_mu)   # larger is higher failure
 
     ### Number of effective sample size given shape and scale discount function
     if(fix_alpha == TRUE){
       alpha_discount <- alpha_max
     } else{
       if (!two_side) {
-        alpha_discount <- pweibull(p_test, shape=weibull_shape,
+        alpha_discount <- pweibull(p_hat, shape=weibull_shape,
                                    scale=weibull_scale)*alpha_max
       } else if (two_side){
-        p_test1    <- ifelse(p_test > 0.5, 1 - p_test, p_test)
-        alpha_discount <- pweibull(p_test1, shape=weibull_shape,
+        p_hat    <- ifelse(p_hat > 0.5, 1 - p_hat, p_hat)
+        alpha_discount <- pweibull(p_hat, shape=weibull_shape,
                                    scale=weibull_scale)*alpha_max
       }
     }
-    p_hat <- p_test
 
   } else{
     alpha_discount <- NULL
@@ -512,84 +488,3 @@ posterior_normal <- function(mu, sigma, N, mu0, sigma0, N0, alpha_max,
               prior_sigma2          = prior_sigma2))
 }
 
-
-
-
-
-#' @title final_normal
-#' @description final_normal
-#' @param posterior_treatment posterior_treatment
-#' @param posterior_control posterior_control
-#' @rdname final_normal
-#' @aliases final_normal,ANY-method
-#' @export final_normal
-setGeneric("final_normal",
-           function(posterior_treatment = NULL,
-                    posterior_control   = NULL){
-             standardGeneric("final_normal")
-           })
-
-setMethod("final_normal",
-          signature(),
-          function(posterior_treatment = NULL,
-                   posterior_control   = NULL){
-
-  # Create plotting densities for the treatment group
-  density_post_treatment  <- density(posterior_treatment$posterior_mu,
-                                     adjust = 0.5)
-
-  if(!is.null(posterior_treatment$posterior_flat_mu)){
-    density_flat_treatment  <- density(posterior_treatment$posterior_flat_mu,
-                                       adjust = .5)
-  } else{
-    density_flat_treatment <- NULL
-  }
-
-
-  if(!is.null(posterior_treatment$prior_mu)){
-    density_prior_treatment <- density(posterior_treatment$prior_mu,
-                                       adjust = .5)
-  } else{
-    density_prior_treatment <- NULL
-  }
-
-
-  # If no controls are present, output a list with above densities
-  # else, append control densities
-  if(is.null(posterior_control)){
-    treatment_posterior <- posterior_treatment$posterior_mu
-
-    return(list(density_post_treatment  = density_post_treatment,
-                density_flat_treatment  = density_flat_treatment,
-                density_prior_treatment = density_prior_treatment,
-                treatment_posterior     = treatment_posterior))
-  } else{
-    density_post_control  <- density(posterior_control$posterior_mu,
-                                     adjust = .5)
-
-    if(!is.null(posterior_control$posterior_flat_mu)){
-      density_flat_control  <- density(posterior_control$posterior_flat_mu,
-                                       adjust = .5)
-    } else{
-      density_flat_control <- NULL
-    }
-
-    if(!is.null(posterior_control$prior_mu)){
-      density_prior_control <- density(posterior_control$prior_mu,
-                                       adjust = .5)
-    } else{
-      density_prior_control <- NULL
-    }
-
-    comparison_posterior <- posterior_treatment$posterior_mu - posterior_control$posterior_mu
-
-    return(list(density_post_control    = density_post_control,
-                density_flat_control    = density_flat_control,
-                density_prior_control   = density_prior_control,
-                density_post_treatment  = density_post_treatment,
-                density_flat_treatment  = density_flat_treatment,
-                density_prior_treatment = density_prior_treatment,
-                comparison_posterior    = comparison_posterior))
-  }
-
-})
