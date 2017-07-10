@@ -13,9 +13,9 @@
 #'   piecewise exponential model. Do not include zero. Default breaks are the
 #'   quantiles of the input times.
 #' @param a0 scalar. Prior value for the gamma shape of the piecewise
-#'   exponential hazards. Default is 1.
+#'   exponential hazards. Default is 0.1.
 #' @param b0 scalar. Prior value for the gamma rate of the piecewise
-#'   exponential hazards. Default is 1.
+#'   exponential hazards. Default is 0.1.
 #' @param surv_time scalar. Survival time of interest for computing the
 #'   probability of survival for a single arm (OPC) trial. Default is
 #'   overall, i.e., current+historical, median survival time.
@@ -39,7 +39,11 @@
 #'   weight of the historical control group.
 #' @param two_side logical. Indicator of two-sided test for the discount
 #'   function. Default value is TRUE.
-#'
+#' @param method character. Analysis method with respect to estimation of the weight
+#'   paramter alpha. Default value "\code{fixed}" estimates alpha once and holds it fixed
+#'   throughout the analysis. Alternative method "\code{mc}" estimates alpha for each
+#'   Monte Carlo iteration. See the the \code{bdpsurvival} vignette \cr
+#'   \code{vignette("bdpsurvival-vignette", package="bayesDP")} for more details.
 #' @details \code{bdpsurvival} uses a two-stage approach for determining the
 #'   strength of historical data in estimation of a survival probability outcome.
 #'   In the first stage, a Weibull distribution function is used as a
@@ -202,12 +206,12 @@
 #'
 #' @rdname bdpsurvival
 #' @import methods
-#' @importFrom stats sd density is.empty.model median model.offset model.response pweibull quantile rbeta rgamma rnorm var vcov
+#' @importFrom stats sd density is.empty.model median model.offset model.response pweibull quantile rbeta rgamma rnorm var vcov pchisq
 #' @importFrom survival Surv survSplit
 #' @aliases bdpsurvival,ANY-method
 #' @export bdpsurvival
 bdpsurvival <- setClass("bdpsurvival", slots = c(posterior_treatment = "list",
-                                                 f1 = "list",
+                                                 posterior_control = "list",
                                                  args1 = "list"))
 setGeneric("bdpsurvival",
   function(formula       = formula,
@@ -221,7 +225,8 @@ setGeneric("bdpsurvival",
            number_mcmc   = 10000,
            weibull_scale = 0.135,
            weibull_shape = 3,
-           two_side      = TRUE){
+           two_side      = TRUE,
+           method        = "fixed"){
              standardGeneric("bdpsurvival")
            })
 
@@ -238,7 +243,8 @@ setMethod("bdpsurvival",
            number_mcmc   = 10000,
            weibull_scale = 0.135,
            weibull_shape = 3,
-           two_side      = TRUE){
+           two_side      = TRUE,
+           method        = "fixed"){
 
   ### Check data frame and ensure it has the correct column names
   namesData <- tolower(names(data))
@@ -259,11 +265,8 @@ setMethod("bdpsurvival",
   }
 
 
-
-
   historical <- NULL
   treatment <- NULL
-
 
   ##############################################################################
   # Quick check, if alpha_max, weibull_scale, or weibull_shape have length 1,
@@ -364,7 +367,8 @@ setMethod("bdpsurvival",
     weibull_scale = weibull_scale[1],
     two_side      = two_side,
     breaks        = breaks,
-    arm2          = arm2)
+    arm2          = arm2,
+    method        = method)
 
   if(arm2){
     posterior_control <- posterior_survival(
@@ -380,7 +384,8 @@ setMethod("bdpsurvival",
       weibull_scale = weibull_scale[2],
       two_side      = two_side,
       breaks        = breaks,
-      arm2          = arm2)
+      arm2          = arm2,
+      method        = method)
   } else{
     posterior_control <- NULL
   }
@@ -399,6 +404,7 @@ setMethod("bdpsurvival",
                 weibull_scale = weibull_scale,
                 weibull_shape = weibull_shape,
                 two_side      = two_side,
+                method        = method,
                 arm2          = arm2,
                 breaks        = breaks,
                 data          = data)
@@ -423,7 +429,7 @@ setMethod("bdpsurvival",
 ### Combine  loss function and posterior estimation into one function
 posterior_survival <- function(S, S0, surv_time, alpha_max, fix_alpha, a0, b0,
                                number_mcmc, weibull_shape, weibull_scale,
-                               two_side, breaks, arm2){
+                               two_side, breaks, arm2, method){
 
 
   ### Extract intervals and count number of intervals
@@ -547,12 +553,30 @@ posterior_survival <- function(S, S0, surv_time, alpha_max, fix_alpha, a0, b0,
     prior_survival           <- 1 - ppexp(q=surv_time, x=prior_hazard, cuts = c(0,breaks))
 
     ### Compute probability that survival is greater for current vs historical
-    p_hat <- mean(posterior_flat_survival > prior_survival)   # higher is better survival
+    if(method == "mc"){
+      logS  <- log(posterior_flat_survival)
+      logS0 <- log(prior_survival)
+
+      ### Variance of log survival, computed via delta method of hazards
+      nIntervals <- sum(surv_time > c(0,breaks))
+      IntLengths <- c(c(0,breaks)[1:nIntervals], surv_time)
+      surv_times <- diff(IntLengths)
+
+      v          <- as.matrix(posterior_flat_hazard[,1:nIntervals]^2) %*% (surv_times^2/a_post[1:nIntervals])
+      v0         <- as.matrix(prior_hazard[,1:nIntervals]^2) %*% (surv_times^2/a_post0[1:nIntervals])
+      Z          <- (logS - logS0)^2 / (v+v0)
+      p_hat      <- pchisq(Z, df=1, lower.tail=FALSE)
+
+    } else if(method == "fixed"){
+      p_hat <- mean(posterior_flat_survival > prior_survival)   # higher is better survival
+    } else{
+      stop("Unrecognized method. Use one of 'fixed' or 'mc'")
+    }
 
     if(fix_alpha){
       alpha_discount <- alpha_max
     } else{
-      if (!two_side) {
+      if (!two_side | method == "mc") {
         alpha_discount <- pweibull(p_hat, shape=weibull_shape, scale=weibull_scale)*alpha_max
       } else if (two_side){
         p_hat    <- ifelse(p_hat > 0.5, 1 - p_hat, p_hat)
@@ -562,16 +586,27 @@ posterior_survival <- function(S, S0, surv_time, alpha_max, fix_alpha, a0, b0,
   } else{
     ### Weight historical data via (approximate) hazard ratio comparing
     ### current vs historical
-    R0     <- log(prior_hazard)-log(posterior_flat_hazard)
-    V0     <- 1/apply(R0,2,var)
-    logHR0 <- R0%*%V0/sum(V0)    #weighted average  of SE^2
-
-    p_hat <- mean(logHR0 > 0)   #larger is higher failure
+    if(method == "mc"){
+      R0    <- log(prior_hazard)-log(posterior_flat_hazard)
+      v     <- 1/(a_post)
+      v0    <- 1/(a_post0)
+      R     <- rowSums(as.matrix(R0/(v+v0) / sum(1/(v+v0))))
+      V0    <- 1 / sum(1/(v+v0))
+      Z     <- R^2 / V0
+      p_hat <- pchisq(Z, df=1, lower.tail=FALSE)
+    } else if(method == "fixed"){
+      R0     <- log(prior_hazard)-log(posterior_flat_hazard)
+      V0     <- 1/apply(R0,2,var)
+      logHR0 <- R0%*%V0/sum(V0)    #weighted average  of SE^2
+      p_hat <- mean(logHR0 > 0)    #larger is higher failure
+    } else{
+      stop("Unrecognized method. Use one of 'fixed' or 'mc'")
+    }
 
     if(fix_alpha){
       alpha_discount <- alpha_max
     } else{
-      if (!two_side) {
+      if (!two_side | method == "mc") {
         alpha_discount <- pweibull(p_hat, shape=weibull_shape, scale=weibull_scale)*alpha_max
       } else if (two_side){
         p_hat    <- ifelse(p_hat > 0.5, 1 - p_hat, p_hat)

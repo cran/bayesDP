@@ -8,7 +8,6 @@
 #' @importFrom ggplot2 theme_bw
 #' @importFrom ggplot2 xlab
 #' @importFrom ggplot2 ylab
-NULL
 #' @title Bayesian Discount Prior: Gaussian mean values
 #' @description \code{bdpnormal} is used for estimating posterior samples from a
 #'   Gaussian outcome where an informative prior is used. The prior weight
@@ -48,6 +47,11 @@ NULL
 #' @param number_mcmc scalar. Number of Monte Carlo simulations. Default is 10000.
 #' @param two_side logical. Indicator of two-sided test for the discount
 #'   function. Default value is TRUE.
+#' @param method character. Analysis method with respect to estimation of the weight
+#'   paramter alpha. Default value "\code{fixed}" estimates alpha once and holds it fixed
+#'   throughout the analysis. Alternative method "\code{mc}" estimates alpha for each
+#'   Monte Carlo iteration. See the the \code{bdpnormal} vignette \cr
+#'   \code{vignette("bdpnormal-vignette", package="bayesDP")} for more details.
 #' @details \code{bdpnormal} uses a two-stage approach for determining the
 #'   strength of historical data in estimation of a mean outcome.  In the first
 #'   stage, a Weibull distribution function is used as a
@@ -174,7 +178,7 @@ NULL
 #'
 #' @rdname bdpnormal
 #' @import methods
-#' @importFrom stats sd density is.empty.model median model.offset model.response pweibull quantile rbeta rgamma rnorm var vcov
+#' @importFrom stats sd density is.empty.model median model.offset model.response pweibull quantile rbeta rgamma rnorm var vcov pchisq
 #' @aliases bdpnormal,ANY-method
 #' @export bdpnormal
 bdpnormal <- setClass("bdpnormal", slots = c(posterior_treatment = "list",
@@ -199,7 +203,8 @@ setGeneric("bdpnormal",
                     weibull_scale = 0.135,
                     weibull_shape = 3,
                     number_mcmc   = 10000,
-                    two_side      = TRUE){
+                    two_side      = TRUE,
+                    method        = "fixed"){
              standardGeneric("bdpnormal")
            })
 
@@ -222,7 +227,8 @@ setMethod("bdpnormal",
                    weibull_scale = 0.135,
                    weibull_shape = 3,
                    number_mcmc   = 10000,
-                   two_side      = TRUE){
+                   two_side      = TRUE,
+                   method        = "fixed"){
 
   ################################################################################
   # Check Input                                                                  #
@@ -339,7 +345,8 @@ setMethod("bdpnormal",
     number_mcmc   = number_mcmc,
     weibull_scale = weibull_scale[1],
     weibull_shape = weibull_shape[1],
-    two_side      = two_side)
+    two_side      = two_side,
+    method        = method)
 
 
   if (arm2){
@@ -355,7 +362,8 @@ setMethod("bdpnormal",
       number_mcmc   = number_mcmc,
       weibull_scale = weibull_scale[2],
       weibull_shape = weibull_shape[2],
-      two_side      = two_side)
+      two_side      = two_side,
+      method        = method)
   } else{
     posterior_control <- NULL
   }
@@ -379,6 +387,7 @@ setMethod("bdpnormal",
                 weibull_shape = weibull_shape,
                 number_mcmc   = number_mcmc,
                 two_side      = two_side,
+                method        = method,
                 arm2          = arm2,
                 intent        = paste(intent,collapse=", "))
 
@@ -401,7 +410,7 @@ setMethod("bdpnormal",
 ################################################################################
 posterior_normal <- function(mu, sigma, N, mu0, sigma0, N0, alpha_max,
                              fix_alpha, number_mcmc, weibull_scale,
-                             weibull_shape, two_side){
+                             weibull_shape, two_side, method){
 
   # Compute posterior(s) of current (flat) and historical (prior) data
   # with non-informative priors
@@ -428,14 +437,24 @@ posterior_normal <- function(mu, sigma, N, mu0, sigma0, N0, alpha_max,
   ### N and N0 are present (i.e., current & historical data are present)
   if(!is.null(N) & !is.null(N0)){
 
+
+
     ### Test of model vs real
-    p_hat <- mean(posterior_flat_mu < prior_mu)   # larger is higher failure
+    if(method == "fixed"){
+      p_hat <- mean(posterior_flat_mu < prior_mu)   # larger is higher failure
+    } else if(method == "mc"){
+      v     <- posterior_flat_sigma2
+      v0    <- prior_sigma2
+      Z     <- (posterior_flat_mu-prior_mu)^2 / (v+v0)
+      p_hat <- pchisq(Z,1,lower.tail=FALSE)
+    }
+
 
     ### Number of effective sample size given shape and scale discount function
     if(fix_alpha == TRUE){
       alpha_discount <- alpha_max
     } else{
-      if (!two_side) {
+      if (!two_side | method == "mc") {
         alpha_discount <- pweibull(p_hat, shape=weibull_shape,
                                    scale=weibull_scale)*alpha_max
       } else if (two_side){

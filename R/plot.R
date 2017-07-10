@@ -8,6 +8,10 @@
 #'   "density" gives the augmented posterior density plot(s).  Leave NULL to
 #'   display all plots in sequence.
 #'
+#' @param print logical. Optional. Produce a plot (\code{print = TRUE}; default) or
+#'   return a ggplot object (\code{print = FALSE}). When \code{print = FALSE},
+#'   it is possible to use \code{ggplot2} syntax to modify the plot appearance.
+#'
 #' @details The \code{plot} method for \code{bdpnormal} returns up to three
 #'   plots: (1) posterior density curves; (2) posterior density of the effect
 #'   of interest; and (3) the discount function. A call to \code{plot} that
@@ -22,7 +26,7 @@
 #' @importFrom graphics par
 #' @importFrom stats sd density is.empty.model median model.offset model.response pweibull quantile rbeta rgamma rnorm var vcov
 #' @export
-setMethod("plot", signature(x = "bdpnormal"), function(x, type=NULL){
+setMethod("plot", signature(x = "bdpnormal"), function(x, type=NULL, print=TRUE){
   posterior_treatment <- x$posterior_treatment
   posterior_control   <- x$posterior_control
   two_side            <- x$args1$two_side
@@ -31,6 +35,7 @@ setMethod("plot", signature(x = "bdpnormal"), function(x, type=NULL){
   N_t                 <- x$args1$N_t
   N_c                 <- x$args1$N_c
   arm2                <- x$args1$arm2
+  method              <- x$args1$method
 
   information_sources <- NULL
 
@@ -90,7 +95,7 @@ setMethod("plot", signature(x = "bdpnormal"), function(x, type=NULL){
 
   D$information_sources <- factor(D$information_sources,
                                   levels = (c("Posterior","Current Data","Historical Data")))
-
+  D$group <- factor(D$group, levels=c("Treatment", "Control"))
 
   ##############################################################################
   ### Posterior Type Plots
@@ -127,11 +132,11 @@ setMethod("plot", signature(x = "bdpnormal"), function(x, type=NULL){
   ### - Only makes sense to plot if Current/historical treatment are present or
   ###   both current/historical control are present
   ##############################################################################
-  if(two_side){
+  if(!two_side | method == "mc"){
     p_hat <- seq(0,1,length.out=100)
-    p_hat <- ifelse(p_hat>.5,1-p_hat,p_hat)
   } else{
     p_hat <- seq(0,1,length.out=100)
+    p_hat <- ifelse(p_hat>.5,1-p_hat,p_hat)
   }
 
   discountfun_plot <- NULL
@@ -143,8 +148,8 @@ setMethod("plot", signature(x = "bdpnormal"), function(x, type=NULL){
     D1 <- data.frame(group = "Treatment",
                      y     = discount_function_treatment,
                      x     = seq(0,1,length.out=100))
-    D2 <- data.frame(group=c("Treatment"), p_hat=c(posterior_treatment$p_hat))
-    D3 <- data.frame(group=c("Treatment"), p_hat=c(posterior_treatment$alpha_discount))
+    D2 <- data.frame(group=c("Treatment"), p_hat=median(posterior_treatment$p_hat))
+    D3 <- data.frame(group=c("Treatment"), p_hat=median(posterior_treatment$alpha_discount))
 
     discountfun_plot <- ggplot() +
       geom_line(data=D1,aes_string(y="y",x="x",color="group"),size=1) +
@@ -166,8 +171,8 @@ setMethod("plot", signature(x = "bdpnormal"), function(x, type=NULL){
       D4 <- data.frame(group = "Control",
                        y     = discount_function_control,
                        x     = seq(0,1,length.out=100))
-      D5 <- data.frame(group="Control", p_hat=c(posterior_control$p_hat))
-      D6 <- data.frame(group="Control", p_hat=c(posterior_control$alpha_discount))
+      D5 <- data.frame(group="Control", p_hat=median(posterior_control$p_hat))
+      D6 <- data.frame(group="Control", p_hat=median(posterior_control$alpha_discount))
 
       discountfun_plot  <- discountfun_plot +
         geom_line(data=D4,aes_string(y="y",x="x",color="group"),size=1) +
@@ -190,22 +195,43 @@ setMethod("plot", signature(x = "bdpnormal"), function(x, type=NULL){
   }
 
 
-  if(is.null(type)){
-    op <- par(ask=TRUE)
-    plot(post_typeplot)
-    plot(densityplot)
-    if(!is.null(discountfun_plot)){
-      plot(discountfun_plot)
+  if(print){
+    if(is.null(type)){
+      op <- par(ask=TRUE)
+      plot(post_typeplot)
+      plot(densityplot)
+      if(!is.null(discountfun_plot)){
+        plot(discountfun_plot)
+      }
+      par(op)
+    } else if (type=="discount"){
+      if(!is.null(discountfun_plot)){
+        plot(discountfun_plot)
+      }
+    } else if (type=="posteriors"){
+      plot(post_typeplot)
+    } else if (type=="density"){
+      plot(densityplot)
     }
-    par(op)
-  } else if (type=="discount"){
-    if(!is.null(discountfun_plot)){
-      plot(discountfun_plot)
+  } else{
+    if(is.null(type)){
+      out <- list(posteriors = post_typeplot,
+                  density = densityplot)
+      if(!is.null(discountfun_plot)){
+        out <- c(out, discount = list(discountfun_plot))
+        out
+      } else{
+        out
+      }
+    } else if (type=="discount"){
+      if(!is.null(discountfun_plot)){
+        discountfun_plot
+      }
+    } else if (type=="posteriors"){
+      post_typeplot
+    } else if (type=="density"){
+      densityplot
     }
-  } else if (type=="posteriors"){
-    plot(post_typeplot)
-  } else if (type=="density"){
-    plot(densityplot)
   }
 })
 
@@ -219,6 +245,10 @@ setMethod("plot", signature(x = "bdpnormal"), function(x, type=NULL){
 #'   "posteriors" gives the posterior plots of the event rates; and
 #'   "density" gives the augmented posterior density plot(s).  Leave NULL to
 #'   display all plots in sequence.
+#'
+#' @param print logical. Optional. Produce a plot (\code{print = TRUE}; default) or
+#'   return a ggplot object (\code{print = FALSE}). When \code{print = FALSE},
+#'   it is possible to use \code{ggplot2} syntax to modify the plot appearance.
 #'
 #' @details The \code{plot} method for \code{bdpbinomial} returns up to three
 #'   plots: (1) posterior density curves; (2) posterior density of the effect
@@ -234,7 +264,7 @@ setMethod("plot", signature(x = "bdpnormal"), function(x, type=NULL){
 #' @importFrom graphics par
 #' @importFrom stats density is.empty.model median model.offset model.response pweibull quantile rbeta rgamma rnorm var vcov
 #' @export
-setMethod("plot", signature(x = "bdpbinomial"), function(x, type=NULL){
+setMethod("plot", signature(x = "bdpbinomial"), function(x, type=NULL, print=TRUE){
   posterior_treatment <- x$posterior_treatment
   posterior_control   <- x$posterior_control
   two_side            <- x$args1$two_side
@@ -243,6 +273,7 @@ setMethod("plot", signature(x = "bdpbinomial"), function(x, type=NULL){
   N_t                 <- x$args1$N_t
   N_c                 <- x$args1$N_c
   arm2                <- x$args1$arm2
+  method              <- x$args1$method
 
   information_sources <- NULL
 
@@ -302,6 +333,7 @@ setMethod("plot", signature(x = "bdpbinomial"), function(x, type=NULL){
 
   D$information_sources <- factor(D$information_sources,
                                   levels = (c("Posterior","Current Data","Historical Data")))
+  D$group <- factor(D$group, levels=c("Treatment", "Control"))
 
   ##############################################################################
   ### Posterior Type Plots
@@ -336,11 +368,11 @@ setMethod("plot", signature(x = "bdpbinomial"), function(x, type=NULL){
   ### - Only makes sense to plot if Current/historical treatment are present or
   ###   both current/historical control are present
   ##############################################################################
-  if(two_side){
+  if(!two_side | method == "mc"){
     p_hat <- seq(0,1,length.out=100)
-    p_hat <- ifelse(p_hat>.5,1-p_hat,p_hat)
   } else{
     p_hat <- seq(0,1,length.out=100)
+    p_hat <- ifelse(p_hat>.5,1-p_hat,p_hat)
   }
 
 
@@ -353,8 +385,8 @@ setMethod("plot", signature(x = "bdpbinomial"), function(x, type=NULL){
     D1 <- data.frame(group = "Treatment",
                      y     = discount_function_treatment,
                      x     = seq(0,1,length.out=100))
-    D2 <- data.frame(group="Treatment", p_hat=c(posterior_treatment$p_hat))
-    D3 <- data.frame(group="Treatment", p_hat=c(posterior_treatment$alpha_discount))
+    D2 <- data.frame(group="Treatment", p_hat=median(posterior_treatment$p_hat))
+    D3 <- data.frame(group="Treatment", p_hat=median(posterior_treatment$alpha_discount))
 
     discountfun_plot <- ggplot() +
       geom_line(data=D1,aes_string(y="y",x="x",color="group"),size=1) +
@@ -377,8 +409,8 @@ setMethod("plot", signature(x = "bdpbinomial"), function(x, type=NULL){
       D4 <- data.frame(group = "Control",
                        y     = discount_function_control,
                        x     = seq(0,1,length.out=100))
-      D5 <- data.frame(group="Control",p_hat=c(posterior_control$p_hat))
-      D6 <- data.frame(group="Control",p_hat=c(posterior_control$alpha_discount))
+      D5 <- data.frame(group="Control",p_hat=median(posterior_control$p_hat))
+      D6 <- data.frame(group="Control",p_hat=median(posterior_control$alpha_discount))
 
       discountfun_plot  <- discountfun_plot +
         geom_line(data=D4,aes_string(y="y",x="x",color="group"),size=1) +
@@ -401,22 +433,43 @@ setMethod("plot", signature(x = "bdpbinomial"), function(x, type=NULL){
   }
 
 
-  if(is.null(type)){
-    op <- par(ask=TRUE)
-    plot(post_typeplot)
-    plot(densityplot)
-    if(!is.null(discountfun_plot)){
-      plot(discountfun_plot)
+  if(print){
+    if(is.null(type)){
+      op <- par(ask=TRUE)
+      plot(post_typeplot)
+      plot(densityplot)
+      if(!is.null(discountfun_plot)){
+        plot(discountfun_plot)
+      }
+      par(op)
+    } else if (type=="discount"){
+      if(!is.null(discountfun_plot)){
+        plot(discountfun_plot)
+      }
+    } else if (type=="posteriors"){
+      plot(post_typeplot)
+    } else if (type=="density"){
+      plot(densityplot)
     }
-    par(op)
-  } else if (type=="discount"){
-    if(!is.null(discountfun_plot)){
-      plot(discountfun_plot)
+  } else{
+    if(is.null(type)){
+      out <- list(posteriors = post_typeplot,
+                  density = densityplot)
+      if(!is.null(discountfun_plot)){
+        out <- c(out, discount = list(discountfun_plot))
+        out
+      } else{
+        out
+      }
+    } else if (type=="discount"){
+      if(!is.null(discountfun_plot)){
+        discountfun_plot
+      }
+    } else if (type=="posteriors"){
+      post_typeplot
+    } else if (type=="density"){
+      densityplot
     }
-  } else if (type=="posteriors"){
-    plot(post_typeplot)
-  } else if (type=="density"){
-    plot(densityplot)
   }
 
 
@@ -432,6 +485,10 @@ setMethod("plot", signature(x = "bdpbinomial"), function(x, type=NULL){
 #'   "survival" gives the survival curves.  Leave NULL to
 #'   display all plots in sequence.
 #'
+#' @param print logical. Optional. Produce a plot (\code{print = TRUE}; default) or
+#'   return a ggplot object (\code{print = FALSE}). When \code{print = FALSE},
+#'   it is possible to use \code{ggplot2} syntax to modify the plot appearance.
+#'
 #' @details The \code{plot} method for \code{bdpsurvival} returns up to two
 #'   plots: (1) posterior survival curves and (2) the discount function. A
 #'   call to \code{plot} that omits the \code{type} input returns one plot
@@ -445,7 +502,7 @@ setMethod("plot", signature(x = "bdpbinomial"), function(x, type=NULL){
 #' @importFrom graphics par
 #' @importFrom stats density is.empty.model median model.offset model.response pweibull quantile rbeta rgamma rnorm var vcov
 #' @export
-setMethod("plot", signature(x = "bdpsurvival"), function(x, type=NULL){
+setMethod("plot", signature(x = "bdpsurvival"), function(x, type=NULL, print=TRUE){
   args1               <- x$args1
   posterior_treatment <- x$posterior_treatment
   posterior_control   <- x$posterior_control
@@ -453,6 +510,7 @@ setMethod("plot", signature(x = "bdpsurvival"), function(x, type=NULL){
   breaks              <- args1$breaks
   arm2                <- args1$arm2
   two_side            <- args1$two_side
+  method              <- args1$method
 
   ##############################################################################
   ### Survival curve(s)
@@ -552,7 +610,8 @@ setMethod("plot", signature(x = "bdpsurvival"), function(x, type=NULL){
     D6 <- NULL
   }
 
-  D <- rbind(D4,D5,D6, D1,D2,D3)
+  D       <- rbind(D4,D5,D6, D1,D2,D3)
+  D$group <- factor(D$group, levels=c("Treatment", "Control"))
 
   ### Plot survival curve
   survival_curves <- ggplot(D, aes_string(x="x",y="y")) +
@@ -571,11 +630,11 @@ setMethod("plot", signature(x = "bdpsurvival"), function(x, type=NULL){
   ### - Only makes sense to plot if Current/historical treatment are present or
   ###   both current/historical control are present
   ##############################################################################
-  if(two_side){
+  if(!two_side | method == "mc"){
     p_hat <- seq(0,1,length.out=100)
-    p_hat <- ifelse(p_hat>.5,1-p_hat,p_hat)
   } else{
     p_hat <- seq(0,1,length.out=100)
+    p_hat <- ifelse(p_hat>.5,1-p_hat,p_hat)
   }
 
   discountfun_plot <- NULL
@@ -587,8 +646,8 @@ setMethod("plot", signature(x = "bdpsurvival"), function(x, type=NULL){
     D1 <- data.frame(group = "Treatment",
                      y     = discount_function_treatment,
                      x     = seq(0,1,length.out=100))
-    D2 <- data.frame(group="Treatment", p_hat=c(posterior_treatment$p_hat))
-    D3 <- data.frame(group="Treatment", p_hat=c(posterior_treatment$alpha_discount))
+    D2 <- data.frame(group="Treatment", p_hat=c(median(posterior_treatment$p_hat)))
+    D3 <- data.frame(group="Treatment", p_hat=c(median(posterior_treatment$alpha_discount)))
 
     discountfun_plot <- ggplot() +
       geom_line(data=D1,aes_string(y="y",x="x",color="group"),size=1) +
@@ -610,8 +669,8 @@ setMethod("plot", signature(x = "bdpsurvival"), function(x, type=NULL){
       D4 <- data.frame(group = "Control",
                        y     = discount_function_control,
                        x     = seq(0,1,length.out=100))
-      D5 <- data.frame(group="Control", p_hat=c(posterior_control$p_hat))
-      D6 <- data.frame(group="Control", p_hat=c(posterior_control$alpha_discount))
+      D5 <- data.frame(group="Control", p_hat=c(median(posterior_control$p_hat)))
+      D6 <- data.frame(group="Control", p_hat=c(median(posterior_control$alpha_discount)))
 
       discountfun_plot  <- discountfun_plot +
         geom_line(data=D4,aes_string(y="y",x="x",color="group"),size=1) +
@@ -634,22 +693,158 @@ setMethod("plot", signature(x = "bdpsurvival"), function(x, type=NULL){
   }
 
 
-  if(is.null(type)){
-    op <- par(ask=TRUE)
-    plot(survival_curves)
-    if(!is.null(args1$S0_t) | (!is.null(args1$S_c) & !is.null(args1$S0_c))){
-      plot(discountfun_plot)
+  if(print){
+    if(is.null(type)){
+      op <- par(ask=TRUE)
+      plot(survival_curves)
+      if(!is.null(args1$S0_t) | (!is.null(args1$S_c) & !is.null(args1$S0_c))){
+        plot(discountfun_plot)
+      }
+      par(op)
+    } else if(type=="discount"){
+      if(!is.null(args1$S0_t) | (!is.null(args1$S_c) & !is.null(args1$S0_c))){
+        plot(discountfun_plot)
+      }
+    } else if(type=="survival"){
+      plot(survival_curves)
     }
-    par(op)
-  } else if(type=="discount"){
-    if(!is.null(args1$S0_t) | (!is.null(args1$S_c) & !is.null(args1$S0_c))){
-      plot(discountfun_plot)
+  } else{
+    if(is.null(type)){
+      out <- list(survival = survival_curves)
+      if(!is.null(args1$S0_t) | (!is.null(args1$S_c) & !is.null(args1$S0_c))){
+        out <- c(out, discount = list(discountfun_plot))
+        out
+      } else{
+        out
+      }
+    } else if(type=="discount"){
+      if(!is.null(args1$S0_t) | (!is.null(args1$S_c) & !is.null(args1$S0_c))){
+        discountfun_plot
+      }
+    } else if(type=="survival"){
+      survival_curves
     }
-  } else if(type=="survival"){
-    plot(survival_curves)
   }
-
-
 })
 
 
+
+#' @title bdpregression Object Plot
+#' @description \code{plot} method for class \code{bdpregression}.
+#' @param x object of class \code{bdpregression}. The result of a call to the
+#'   \code{\link{bdpregression}} function.
+#' @param type character. Optional. Select plot type to print.
+#'   Currently supports "discount", the discount function plot.
+#'
+#' @param print logical. Optional. Produce a plot (\code{print = TRUE}; default) or
+#'   return a ggplot object (\code{print = FALSE}). When \code{print = FALSE},
+#'   it is possible to use \code{ggplot2} syntax to modify the plot appearance.
+#'
+#' @details The \code{plot} method for \code{bdpregression} currently returns
+#'   only the discount function. More plots will be implemented in a future release.
+#'
+#' @import methods
+#' @importFrom utils head
+#' @importFrom ggplot2 aes_string ggtitle ylim guides guide_legend theme element_blank
+#' @importFrom graphics par
+#' @importFrom stats sd density is.empty.model median model.offset model.response pweibull quantile rbeta rgamma rnorm var vcov
+#' @export
+setMethod("plot", signature(x = "bdpregression"), function(x, type=NULL, print=TRUE){
+
+    posterior_treatment <- x$posterior_treatment
+  posterior_control   <- x$posterior_control
+  df_t                <- posterior_treatment$df_t
+  df_c                <- posterior_treatment$df_c
+  two_side            <- x$args1$two_side
+  arm2                <- x$args1$arm2
+  method              <- x$args1$method
+
+
+  ##############################################################################
+  ### Discount function plot
+  ### - Only makes sense to plot if Current/historical treatment are present or
+  ###   both current/historical control are present
+  ##############################################################################
+  if(!two_side | method == "mc"){
+    p_hat <- seq(0,1,length.out=100)
+  } else{
+    p_hat <- seq(0,1,length.out=100)
+    p_hat <- ifelse(p_hat>.5,1-p_hat,p_hat)
+  }
+
+  discountfun_plot <- NULL
+
+  ### Discount function plot for treatment arm
+  discount_function_treatment <- pweibull(p_hat,
+                                          shape=x$args1$weibull_shape[1],
+                                          scale=x$args1$weibull_scale[1])
+  D1 <- data.frame(group = "Treatment",
+                   y     = discount_function_treatment,
+                   x     = seq(0,1,length.out=100))
+  D2 <- data.frame(group=c("Treatment"), p_hat=median(posterior_treatment$p_hat))
+  D3 <- data.frame(group=c("Treatment"), p_hat=median(posterior_treatment$alpha_discount))
+
+  discountfun_plot <- ggplot() +
+    geom_line(data=D1,aes_string(y="y",x="x",color="group"),size=1) +
+    geom_vline(data=D2, aes_string(xintercept="p_hat",color="group"),lty=2) +
+    geom_hline(data=D3, aes_string(yintercept="p_hat",color="group"),lty=2)
+
+
+    if(arm2){
+    if(is.null(discountfun_plot)){
+      discountfun_plot <- ggplot()
+    }
+
+    discount_function_control <- pweibull(p_hat,
+                                          shape=x$args1$weibull_shape[2],
+                                          scale=x$args1$weibull_scale[2])
+
+    D4 <- data.frame(group = "Control",
+                     y     = discount_function_control,
+                     x     = seq(0,1,length.out=100))
+    D5 <- data.frame(group="Control", p_hat=median(posterior_control$p_hat))
+    D6 <- data.frame(group="Control", p_hat=median(posterior_control$alpha_discount))
+
+    discountfun_plot  <- discountfun_plot +
+      geom_line(data=D4,aes_string(y="y",x="x",color="group"),size=1) +
+      geom_vline(data=D5,aes_string(xintercept="p_hat",color="group"),lty=2) +
+      geom_hline(data=D6,aes_string(yintercept="p_hat",color="group"),lty=2)
+    }
+
+    if(!is.null(discountfun_plot)){
+    discountfun_plot <- discountfun_plot +
+      facet_wrap(~group, ncol=1) +
+      theme_bw() +
+      ylab("Alpha Discount Value") +
+      xlab("Stochastic comparison (Current vs Historical Data)") +
+      ggtitle("Discount Function") +
+      ylim(0,1) +
+      guides(fill=guide_legend(title=NULL)) +
+      theme(legend.title=element_blank())
+  }
+
+
+  if(print){
+    if(is.null(type)){
+      op <- par(ask=TRUE)
+      if(!is.null(discountfun_plot)){
+        plot(discountfun_plot)
+      }
+      par(op)
+    } else if (type=="discount"){
+        if(!is.null(discountfun_plot)){
+          plot(discountfun_plot)
+        }
+    }
+  } else{
+    if(is.null(type)){
+      out <- list(discount = list(discountfun_plot))
+      out
+    } else if (type=="discount"){
+      if(!is.null(discountfun_plot)){
+        discountfun_plot
+      }
+    }
+  }
+
+})

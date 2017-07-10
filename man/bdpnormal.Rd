@@ -9,7 +9,8 @@ bdpnormal(mu_t = NULL, sigma_t = NULL, N_t = NULL, mu0_t = NULL,
   sigma0_t = NULL, N0_t = NULL, mu_c = NULL, sigma_c = NULL,
   N_c = NULL, mu0_c = NULL, sigma0_c = NULL, N0_c = NULL,
   alpha_max = 1, fix_alpha = FALSE, weibull_scale = 0.135,
-  weibull_shape = 3, number_mcmc = 10000, two_side = TRUE)
+  weibull_shape = 3, number_mcmc = 10000, two_side = TRUE,
+  method = "fixed")
 }
 \arguments{
 \item{mu_t}{scalar. Mean of the current treatment group.}
@@ -63,6 +64,12 @@ historical control group.}
 
 \item{two_side}{logical. Indicator of two-sided test for the discount
 function. Default value is TRUE.}
+
+\item{method}{character. Analysis method with respect to estimation of the weight
+paramter alpha. Default value "\code{fixed}" estimates alpha once and holds it fixed
+throughout the analysis. Alternative method "\code{mc}" estimates alpha for each
+Monte Carlo iteration. See the the \code{bdpnormal} vignette \cr
+\code{vignette("bdpnormal-vignette", package="bayesDP")} for more details.}
 }
 \value{
 \code{bdpnormal} returns an object of class "bdpnormal". The
