@@ -2,10 +2,10 @@
 # Generator token: 10BE3573-1514-4C36-9D1C-5A225CD40393
 
 ppexpV <- function(q, x, cuts) {
-    .Call('bayesDP_ppexpV', PACKAGE = 'bayesDP', q, x, cuts)
+    .Call('_bayesDP_ppexpV', PACKAGE = 'bayesDP', q, x, cuts)
 }
 
 ppexpM <- function(q, x, cuts) {
-    .Call('bayesDP_ppexpM', PACKAGE = 'bayesDP', q, x, cuts)
+    .Call('_bayesDP_ppexpM', PACKAGE = 'bayesDP', q, x, cuts)
 }
 

@@ -8,7 +8,7 @@ using namespace Rcpp;
 
 // ppexpV
 double ppexpV(double q, const arma::vec& x, const arma::vec& cuts);
-RcppExport SEXP bayesDP_ppexpV(SEXP qSEXP, SEXP xSEXP, SEXP cutsSEXP) {
+RcppExport SEXP _bayesDP_ppexpV(SEXP qSEXP, SEXP xSEXP, SEXP cutsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -21,7 +21,7 @@ END_RCPP
 }
 // ppexpM
 arma::vec ppexpM(double q, const arma::mat& x, const arma::vec& cuts);
-RcppExport SEXP bayesDP_ppexpM(SEXP qSEXP, SEXP xSEXP, SEXP cutsSEXP) {
+RcppExport SEXP _bayesDP_ppexpM(SEXP qSEXP, SEXP xSEXP, SEXP cutsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
