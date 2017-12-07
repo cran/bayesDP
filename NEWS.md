@@ -1,3 +1,20 @@
+# bayesDP 1.3.0
+## Major new features
+* Addition of the bdplm function for two-arm trials
+* Users can now choose between 3 discount functions via the discount_function input:
+  + Weibull CDF
+  + Scaled Weibull CDF - scales the Weibull CDF so that the max possible value is 1
+  + Identity - sets the discount weight to the posterior probability
+* Removal of bdpregression
+
+
+## Bug fixes and minor improvements
+* Removed two-sided and one-sided function inputs to avoid confusion
+* Posterior probabilities for method="mc" switched from pshisq to pnorm 
+* Updated vignettes to reflect new features
+
+
+
 # bayesDP 1.2.0
 ## Major new features
 * Supports one-arm regression analysis

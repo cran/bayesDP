@@ -27,6 +27,12 @@
 #' @param mu0_c scalar. Mean of the historical control group.
 #' @param sigma0_c scalar. Standard deviation of the historical control group.
 #' @param N0_c scalar. Number of observations of the historical control group.
+#' @param discount_function character. Specify the discount function to use.
+#'   Currently supports \code{weibull}, \code{scaledweibull}, and
+#'   \code{identity}. The discount function \code{scaledweibull} scales
+#'   the output of the Weibull CDF to have a max value of 1. The \code{identity}
+#'   discount function uses the posterior probability directly as the discount
+#'   weight. Default value is "\code{weibull}".
 #' @param alpha_max scalar. Maximum weight the discount function can apply.
 #'   Default is 1. For a two-arm trial, users may specify a vector of two values
 #'   where the first value is used to weight the historical treatment group and
@@ -45,13 +51,18 @@
 #'   treatment group and the second value is used to estimate the weight of the
 #'   historical control group.
 #' @param number_mcmc scalar. Number of Monte Carlo simulations. Default is 10000.
-#' @param two_side logical. Indicator of two-sided test for the discount
-#'   function. Default value is TRUE.
 #' @param method character. Analysis method with respect to estimation of the weight
 #'   paramter alpha. Default value "\code{fixed}" estimates alpha once and holds it fixed
 #'   throughout the analysis. Alternative method "\code{mc}" estimates alpha for each
 #'   Monte Carlo iteration. See the the \code{bdpnormal} vignette \cr
 #'   \code{vignette("bdpnormal-vignette", package="bayesDP")} for more details.
+#' @param compare logical. Should a comparison object be included in the fit?
+#'   For a one-arm analysis, the comparison object is simply the posterior
+#'   chain of the treatment group parameter. For a two-arm analysis, the comparison
+#'   object is the posterior chain of the treatment effect that compares treatment and
+#'   control. If \code{compare=TRUE}, the comparison object is accessible in the
+#'   \code{final} slot, else the \code{final} slot is \code{NULL}. Default is
+#'   \code{TRUE}.
 #' @details \code{bdpnormal} uses a two-stage approach for determining the
 #'   strength of historical data in estimation of a mean outcome.  In the first
 #'   stage, a Weibull distribution function is used as a
@@ -133,6 +144,17 @@
 #'    list. Similar entries as \code{posterior_treament}. Only present if a
 #'    control group is specified.
 #'  }
+#'
+#'  \item{\code{final}}{
+#'    list. Contains the final comparison object, dependent on the analysis type:}
+#'    \itemize{
+#'      \item{One-arm analysis:}{
+#'        vector. Posterior chain of the mean.}
+#'      \item{Two-arm analysis:}{
+#'        vector. Posterior chain of the mean difference comparing treatment and
+#'        control groups.}
+#'   }
+#'
 #'  \item{\code{args1}}{
 #'    list. Entries contain user inputs. In addition, the following elements
 #'    are ouput:}
@@ -178,57 +200,60 @@
 #'
 #' @rdname bdpnormal
 #' @import methods
-#' @importFrom stats sd density is.empty.model median model.offset model.response pweibull quantile rbeta rgamma rnorm var vcov pchisq
+#' @importFrom stats sd density is.empty.model median model.offset model.response pweibull quantile rbeta rgamma rnorm var vcov
 #' @aliases bdpnormal,ANY-method
 #' @export bdpnormal
 bdpnormal <- setClass("bdpnormal", slots = c(posterior_treatment = "list",
                                              posterior_control = "list",
+                                             final = "list",
                                              args1 = "list"))
 
 setGeneric("bdpnormal",
-           function(mu_t          = NULL,
-                    sigma_t       = NULL,
-                    N_t           = NULL,
-                    mu0_t         = NULL,
-                    sigma0_t      = NULL,
-                    N0_t          = NULL,
-                    mu_c          = NULL,
-                    sigma_c       = NULL,
-                    N_c           = NULL,
-                    mu0_c         = NULL,
-                    sigma0_c      = NULL,
-                    N0_c          = NULL,
-                    alpha_max     = 1,
-                    fix_alpha     = FALSE,
-                    weibull_scale = 0.135,
-                    weibull_shape = 3,
-                    number_mcmc   = 10000,
-                    two_side      = TRUE,
-                    method        = "fixed"){
+           function(mu_t              = NULL,
+                    sigma_t           = NULL,
+                    N_t               = NULL,
+                    mu0_t             = NULL,
+                    sigma0_t          = NULL,
+                    N0_t              = NULL,
+                    mu_c              = NULL,
+                    sigma_c           = NULL,
+                    N_c               = NULL,
+                    mu0_c             = NULL,
+                    sigma0_c          = NULL,
+                    N0_c              = NULL,
+                    discount_function = "weibull",
+                    alpha_max         = 1,
+                    fix_alpha         = FALSE,
+                    weibull_scale     = 0.135,
+                    weibull_shape     = 3,
+                    number_mcmc       = 10000,
+                    method            = "fixed",
+                    compare           = TRUE){
              standardGeneric("bdpnormal")
            })
 
 setMethod("bdpnormal",
           signature(),
-          function(mu_t          = NULL,
-                   sigma_t       = NULL,
-                   N_t           = NULL,
-                   mu0_t         = NULL,
-                   sigma0_t      = NULL,
-                   N0_t          = NULL,
-                   mu_c          = NULL,
-                   sigma_c       = NULL,
-                   N_c           = NULL,
-                   mu0_c         = NULL,
-                   sigma0_c      = NULL,
-                   N0_c          = NULL,
-                   alpha_max     = 1,
-                   fix_alpha     = FALSE,
-                   weibull_scale = 0.135,
-                   weibull_shape = 3,
-                   number_mcmc   = 10000,
-                   two_side      = TRUE,
-                   method        = "fixed"){
+          function(mu_t              = NULL,
+                   sigma_t           = NULL,
+                   N_t               = NULL,
+                   mu0_t             = NULL,
+                   sigma0_t          = NULL,
+                   N0_t              = NULL,
+                   mu_c              = NULL,
+                   sigma_c           = NULL,
+                   N_c               = NULL,
+                   mu0_c             = NULL,
+                   sigma0_c          = NULL,
+                   N0_c              = NULL,
+                   discount_function = "weibull",
+                   alpha_max         = 1,
+                   fix_alpha         = FALSE,
+                   weibull_scale     = 0.135,
+                   weibull_shape     = 3,
+                   number_mcmc       = 10000,
+                   method            = "fixed",
+                   compare           = TRUE){
 
   ################################################################################
   # Check Input                                                                  #
@@ -311,6 +336,13 @@ setMethod("bdpnormal",
     arm2 <- FALSE
   }
 
+  # Check that discount_function is input correctly
+  all_functions <- c("weibull", "scaledweibull", "identity")
+  function_match <- match(discount_function, all_functions)
+  if(is.na(function_match)) {
+    stop("discount_function input incorrectly.")
+  }
+
 
   ##############################################################################
   # Quick check, if alpha_max, weibull_scale, or weibull_shape have length 1,
@@ -329,70 +361,88 @@ setMethod("bdpnormal",
     weibull_shape <- rep(weibull_shape, 2)
   }
 
+
   ################################################################################
   # Results                                                                      #
   ################################################################################
 
   posterior_treatment <- posterior_normal(
-    mu            = mu_t,
-    sigma         = sigma_t,
-    N             = N_t,
-    mu0           = mu0_t,
-    sigma0        = sigma0_t,
-    N0            = N0_t,
-    alpha_max     = alpha_max[1],
-    fix_alpha     = fix_alpha,
-    number_mcmc   = number_mcmc,
-    weibull_scale = weibull_scale[1],
-    weibull_shape = weibull_shape[1],
-    two_side      = two_side,
-    method        = method)
+    mu                = mu_t,
+    sigma             = sigma_t,
+    N                 = N_t,
+    mu0               = mu0_t,
+    sigma0            = sigma0_t,
+    N0                = N0_t,
+    discount_function = discount_function,
+    alpha_max         = alpha_max[1],
+    fix_alpha         = fix_alpha,
+    number_mcmc       = number_mcmc,
+    weibull_scale     = weibull_scale[1],
+    weibull_shape     = weibull_shape[1],
+    method            = method)
 
 
   if (arm2){
     posterior_control <- posterior_normal(
-      mu            = mu_c,
-      sigma         = sigma_c,
-      N             = N_c,
-      mu0           = mu0_c,
-      sigma0        = sigma0_c,
-      N0            = N0_c,
-      alpha_max     = alpha_max[2],
-      fix_alpha     = fix_alpha,
-      number_mcmc   = number_mcmc,
-      weibull_scale = weibull_scale[2],
-      weibull_shape = weibull_shape[2],
-      two_side      = two_side,
-      method        = method)
+      mu                = mu_c,
+      sigma             = sigma_c,
+      N                 = N_c,
+      mu0               = mu0_c,
+      sigma0            = sigma0_c,
+      N0                = N0_c,
+      discount_function = discount_function,
+      alpha_max         = alpha_max[2],
+      fix_alpha         = fix_alpha,
+      number_mcmc       = number_mcmc,
+      weibull_scale     = weibull_scale[2],
+      weibull_shape     = weibull_shape[2],
+      method            = method)
   } else{
     posterior_control <- NULL
   }
 
 
-  args1 <- list(mu_t          = mu_t,
-                sigma_t       = sigma_t,
-                N_t           = N_t,
-                mu0_t         = mu0_t,
-                sigma0_t      = sigma0_t,
-                N0_t          = N0_t,
-                mu_c          = mu_c,
-                sigma_c       = sigma_c,
-                N_c           = N_c,
-                mu0_c         = mu0_c,
-                sigma0_c      = sigma0_c,
-                N0_c          = N0_c,
-                alpha_max     = alpha_max,
-                fix_alpha     = fix_alpha,
-                weibull_scale = weibull_scale,
-                weibull_shape = weibull_shape,
-                number_mcmc   = number_mcmc,
-                two_side      = two_side,
-                method        = method,
-                arm2          = arm2,
-                intent        = paste(intent,collapse=", "))
+  args1 <- list(mu_t              = mu_t,
+                sigma_t           = sigma_t,
+                N_t               = N_t,
+                mu0_t             = mu0_t,
+                sigma0_t          = sigma0_t,
+                N0_t              = N0_t,
+                mu_c              = mu_c,
+                sigma_c           = sigma_c,
+                N_c               = N_c,
+                mu0_c             = mu0_c,
+                sigma0_c          = sigma0_c,
+                N0_c              = N0_c,
+                discount_function = discount_function,
+                alpha_max         = alpha_max,
+                fix_alpha         = fix_alpha,
+                weibull_scale     = weibull_scale,
+                weibull_shape     = weibull_shape,
+                number_mcmc       = number_mcmc,
+                method            = method,
+                arm2              = arm2,
+                intent            = paste(intent,collapse=", ",
+                compare           = compare))
+
+  ##############################################################################
+  ### Create final (comparison) object
+  ##############################################################################
+  if(!compare){
+    final <- NULL
+  } else{
+    if(arm2){
+      final           <- list()
+      final$posterior <- posterior_treatment$posterior_mu - posterior_control$posterior_mu
+    } else{
+      final           <- list()
+      final$posterior <- posterior_treatment$posterior_mu
+    }
+  }
 
   me <- list(posterior_treatment = posterior_treatment,
              posterior_control   = posterior_control,
+             final               = final,
              args1               = args1)
 
   class(me) <- "bdpnormal"
@@ -408,16 +458,17 @@ setMethod("bdpnormal",
 # 1) Estimate the discount function (if current+historical data both present)
 # 2) Estimate the posterior of the augmented data
 ################################################################################
-posterior_normal <- function(mu, sigma, N, mu0, sigma0, N0, alpha_max,
-                             fix_alpha, number_mcmc, weibull_scale,
-                             weibull_shape, two_side, method){
+posterior_normal <- function(mu, sigma, N, mu0, sigma0, N0, discount_function,
+                             alpha_max, fix_alpha, number_mcmc, weibull_scale,
+                             weibull_shape, method){
 
   # Compute posterior(s) of current (flat) and historical (prior) data
   # with non-informative priors
   # Current data:
   if(!is.null(N)){
     posterior_flat_sigma2 <- 1/rgamma(number_mcmc, (N - 1)/2, ((N - 1) * sigma^2)/2)
-    posterior_flat_mu     <- rnorm(number_mcmc, mu, (posterior_flat_sigma2/((N-1)+1))^0.5)
+    s                     <- (posterior_flat_sigma2/((N-1)+1))^0.5
+    posterior_flat_mu     <- rnorm(number_mcmc, mu, s)
   } else{
     posterior_flat_mu <- posterior_flat_sigma2 <- NULL
   }
@@ -425,7 +476,8 @@ posterior_normal <- function(mu, sigma, N, mu0, sigma0, N0, alpha_max,
   # Historical data:
   if(!is.null(N0)){
     prior_sigma2 <- 1/rgamma(number_mcmc, (N0-1)/2, ((N0-1)*sigma0^2)/2)
-    prior_mu     <- rnorm(number_mcmc, mu0, (prior_sigma2/((N0-1)+1))^0.5)
+    s0           <- (prior_sigma2/((N0-1)+1))^0.5
+    prior_mu     <- rnorm(number_mcmc, mu0, s0)
   } else{
     prior_mu  <- prior_sigma2 <- NULL
   }
@@ -437,16 +489,12 @@ posterior_normal <- function(mu, sigma, N, mu0, sigma0, N0, alpha_max,
   ### N and N0 are present (i.e., current & historical data are present)
   if(!is.null(N) & !is.null(N0)){
 
-
-
     ### Test of model vs real
     if(method == "fixed"){
       p_hat <- mean(posterior_flat_mu < prior_mu)   # larger is higher failure
     } else if(method == "mc"){
-      v     <- posterior_flat_sigma2
-      v0    <- prior_sigma2
-      Z     <- (posterior_flat_mu-prior_mu)^2 / (v+v0)
-      p_hat <- pchisq(Z,1,lower.tail=FALSE)
+      Z     <- abs(posterior_flat_mu-prior_mu) / (s^2+s0^2)
+      p_hat <- 2*(1-pnorm(Z))
     }
 
 
@@ -454,16 +502,21 @@ posterior_normal <- function(mu, sigma, N, mu0, sigma0, N0, alpha_max,
     if(fix_alpha == TRUE){
       alpha_discount <- alpha_max
     } else{
-      if (!two_side | method == "mc") {
-        alpha_discount <- pweibull(p_hat, shape=weibull_shape,
-                                   scale=weibull_scale)*alpha_max
-      } else if (two_side){
-        p_hat    <- ifelse(p_hat > 0.5, 1 - p_hat, p_hat)
-        alpha_discount <- pweibull(p_hat, shape=weibull_shape,
-                                   scale=weibull_scale)*alpha_max
-      }
-    }
+        p_hat          <- 2*ifelse(p_hat > 0.5, 1 - p_hat, p_hat)
 
+        # Compute alpha discount based on distribution
+        if(discount_function == "weibull"){
+          alpha_discount <- pweibull(p_hat, shape=weibull_shape,
+                                     scale=weibull_scale)*alpha_max
+        } else if(discount_function == "scaledweibull"){
+          max_p <- pweibull(1, shape=weibull_shape, scale=weibull_scale)
+
+          alpha_discount <- pweibull(p_hat, shape=weibull_shape,
+                                     scale=weibull_scale)*alpha_max/max_p
+        } else if(discount_function == "identity"){
+          alpha_discount <- p_hat
+        }
+    }
   } else{
     alpha_discount <- NULL
     p_hat         <- NULL

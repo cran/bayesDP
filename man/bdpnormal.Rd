@@ -8,9 +8,9 @@
 bdpnormal(mu_t = NULL, sigma_t = NULL, N_t = NULL, mu0_t = NULL,
   sigma0_t = NULL, N0_t = NULL, mu_c = NULL, sigma_c = NULL,
   N_c = NULL, mu0_c = NULL, sigma0_c = NULL, N0_c = NULL,
-  alpha_max = 1, fix_alpha = FALSE, weibull_scale = 0.135,
-  weibull_shape = 3, number_mcmc = 10000, two_side = TRUE,
-  method = "fixed")
+  discount_function = "weibull", alpha_max = 1, fix_alpha = FALSE,
+  weibull_scale = 0.135, weibull_shape = 3, number_mcmc = 10000,
+  method = "fixed", compare = TRUE)
 }
 \arguments{
 \item{mu_t}{scalar. Mean of the current treatment group.}
@@ -39,6 +39,13 @@ group.}
 
 \item{N0_c}{scalar. Number of observations of the historical control group.}
 
+\item{discount_function}{character. Specify the discount function to use.
+Currently supports \code{weibull}, \code{scaledweibull}, and
+\code{identity}. The discount function \code{scaledweibull} scales
+the output of the Weibull CDF to have a max value of 1. The \code{identity}
+discount function uses the posterior probability directly as the discount
+weight. Default value is "\code{weibull}".}
+
 \item{alpha_max}{scalar. Maximum weight the discount function can apply.
 Default is 1. For a two-arm trial, users may specify a vector of two values
 where the first value is used to weight the historical treatment group and
@@ -62,14 +69,19 @@ historical control group.}
 
 \item{number_mcmc}{scalar. Number of Monte Carlo simulations. Default is 10000.}
 
-\item{two_side}{logical. Indicator of two-sided test for the discount
-function. Default value is TRUE.}
-
 \item{method}{character. Analysis method with respect to estimation of the weight
 paramter alpha. Default value "\code{fixed}" estimates alpha once and holds it fixed
 throughout the analysis. Alternative method "\code{mc}" estimates alpha for each
 Monte Carlo iteration. See the the \code{bdpnormal} vignette \cr
 \code{vignette("bdpnormal-vignette", package="bayesDP")} for more details.}
+
+\item{compare}{logical. Should a comparison object be included in the fit?
+For a one-arm analysis, the comparison object is simply the posterior
+chain of the treatment group parameter. For a two-arm analysis, the comparison
+object is the posterior chain of the treatment effect that compares treatment and
+control. If \code{compare=TRUE}, the comparison object is accessible in the
+\code{final} slot, else the \code{final} slot is \code{NULL}. Default is
+\code{TRUE}.}
 }
 \value{
 \code{bdpnormal} returns an object of class "bdpnormal". The
@@ -121,6 +133,17 @@ the following components:
    list. Similar entries as \code{posterior_treament}. Only present if a
    control group is specified.
  }
+
+ \item{\code{final}}{
+   list. Contains the final comparison object, dependent on the analysis type:}
+   \itemize{
+     \item{One-arm analysis:}{
+       vector. Posterior chain of the mean.}
+     \item{Two-arm analysis:}{
+       vector. Posterior chain of the mean difference comparing treatment and
+       control groups.}
+  }
+
  \item{\code{args1}}{
    list. Entries contain user inputs. In addition, the following elements
    are ouput:}
@@ -204,4 +227,3 @@ Haddad, T., Himes, A., Thompson, L., Irony, T., Nair, R. MDIC Computer
   and \code{\link[=plot,bdpnormal-method]{plot}} for details of each of the
   supported methods.
 }
-

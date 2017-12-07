@@ -29,7 +29,7 @@
 setMethod("plot", signature(x = "bdpnormal"), function(x, type=NULL, print=TRUE){
   posterior_treatment <- x$posterior_treatment
   posterior_control   <- x$posterior_control
-  two_side            <- x$args1$two_side
+  discount_function   <- x$args1$discount_function
   N0_t                <- x$args1$N0_t
   N0_c                <- x$args1$N0_c
   N_t                 <- x$args1$N_t
@@ -132,24 +132,36 @@ setMethod("plot", signature(x = "bdpnormal"), function(x, type=NULL, print=TRUE)
   ### - Only makes sense to plot if Current/historical treatment are present or
   ###   both current/historical control are present
   ##############################################################################
-  if(!two_side | method == "mc"){
-    p_hat <- seq(0,1,length.out=100)
-  } else{
-    p_hat <- seq(0,1,length.out=100)
-    p_hat <- ifelse(p_hat>.5,1-p_hat,p_hat)
-  }
+  p_hat <- seq(0,1,length.out=100)
 
   discountfun_plot <- NULL
 
   if(!is.null(N0_t) & !is.null(N_t)){
-    discount_function_treatment <- pweibull(p_hat,
-                                            shape=x$args1$weibull_shape[1],
-                                            scale=x$args1$weibull_scale[1])
+
+    ### Create discount function based on distribution type
+    if(discount_function == "weibull"){
+      discount_function_treatment <- pweibull(p_hat,
+                                              shape=x$args1$weibull_shape[1],
+                                              scale=x$args1$weibull_scale[1])
+    } else if(discount_function == "scaledweibull"){
+      max_p <- pweibull(1,
+                        shape=x$args1$weibull_shape[1],
+                        scale=x$args1$weibull_scale[1])
+
+      discount_function_treatment <- pweibull(p_hat,
+                                              shape=x$args1$weibull_shape[1],
+                                              scale=x$args1$weibull_scale[1])/max_p
+    } else if(discount_function == "identity"){
+      discount_function_treatment <- p_hat
+    }
+
     D1 <- data.frame(group = "Treatment",
                      y     = discount_function_treatment,
                      x     = seq(0,1,length.out=100))
-    D2 <- data.frame(group=c("Treatment"), p_hat=median(posterior_treatment$p_hat))
-    D3 <- data.frame(group=c("Treatment"), p_hat=median(posterior_treatment$alpha_discount))
+    D2 <- data.frame(group = c("Treatment"),
+                     p_hat = median(posterior_treatment$p_hat))
+    D3 <- data.frame(group = c("Treatment"),
+                     p_hat = median(posterior_treatment$alpha_discount))
 
     discountfun_plot <- ggplot() +
       geom_line(data=D1,aes_string(y="y",x="x",color="group"),size=1) +
@@ -164,9 +176,22 @@ setMethod("plot", signature(x = "bdpnormal"), function(x, type=NULL, print=TRUE)
         discountfun_plot <- ggplot()
       }
 
-      discount_function_control <- pweibull(p_hat,
-                                            shape=x$args1$weibull_shape[2],
-                                            scale=x$args1$weibull_scale[2])
+      ### Create discount function based on distribution type
+      if(discount_function == "weibull"){
+        discount_function_control <- pweibull(p_hat,
+                                              shape=x$args1$weibull_shape[2],
+                                              scale=x$args1$weibull_scale[2])
+      } else if(discount_function == "scaledweibull"){
+        max_p <- pweibull(1,
+                          shape=x$args1$weibull_shape[2],
+                          scale=x$args1$weibull_scale[2])
+
+        discount_function_control <- pweibull(p_hat,
+                                              shape=x$args1$weibull_shape[2],
+                                              scale=x$args1$weibull_scale[2])/max_p
+      } else if(discount_function == "identity"){
+        discount_function_control <- p_hat
+      }
 
       D4 <- data.frame(group = "Control",
                        y     = discount_function_control,
@@ -267,7 +292,7 @@ setMethod("plot", signature(x = "bdpnormal"), function(x, type=NULL, print=TRUE)
 setMethod("plot", signature(x = "bdpbinomial"), function(x, type=NULL, print=TRUE){
   posterior_treatment <- x$posterior_treatment
   posterior_control   <- x$posterior_control
-  two_side            <- x$args1$two_side
+  discount_function   <- x$args1$discount_function
   N0_t                <- x$args1$N0_t
   N0_c                <- x$args1$N0_c
   N_t                 <- x$args1$N_t
@@ -368,20 +393,28 @@ setMethod("plot", signature(x = "bdpbinomial"), function(x, type=NULL, print=TRU
   ### - Only makes sense to plot if Current/historical treatment are present or
   ###   both current/historical control are present
   ##############################################################################
-  if(!two_side | method == "mc"){
-    p_hat <- seq(0,1,length.out=100)
-  } else{
-    p_hat <- seq(0,1,length.out=100)
-    p_hat <- ifelse(p_hat>.5,1-p_hat,p_hat)
-  }
-
+  p_hat <- seq(0,1,length.out=100)
 
   discountfun_plot <- NULL
 
   if(!is.null(N0_t) & !is.null(N_t)){
-    discount_function_treatment <- pweibull(p_hat,
-                                            shape=x$args1$weibull_shape[1],
-                                            scale=x$args1$weibull_scale[1])
+    ### Create discount function based on distribution type
+    if(discount_function == "weibull"){
+      discount_function_treatment <- pweibull(p_hat,
+                                              shape=x$args1$weibull_shape[1],
+                                              scale=x$args1$weibull_scale[1])
+    } else if(discount_function == "scaledweibull"){
+      max_p <- pweibull(1,
+                        shape=x$args1$weibull_shape[1],
+                        scale=x$args1$weibull_scale[1])
+
+      discount_function_treatment <- pweibull(p_hat,
+                                              shape=x$args1$weibull_shape[1],
+                                              scale=x$args1$weibull_scale[1])/max_p
+    } else if(discount_function == "identity"){
+      discount_function_treatment <- p_hat
+    }
+
     D1 <- data.frame(group = "Treatment",
                      y     = discount_function_treatment,
                      x     = seq(0,1,length.out=100))
@@ -402,9 +435,22 @@ setMethod("plot", signature(x = "bdpbinomial"), function(x, type=NULL, print=TRU
         discountfun_plot <- ggplot()
       }
 
-      discount_function_control <- pweibull(p_hat,
-                                            shape=x$args1$weibull_shape[2],
-                                            scale=x$args1$weibull_scale[2])
+      ### Create discount function based on distribution type
+      if(discount_function == "weibull"){
+        discount_function_control <- pweibull(p_hat,
+                                              shape=x$args1$weibull_shape[2],
+                                              scale=x$args1$weibull_scale[2])
+      } else if(discount_function == "scaledweibull"){
+        max_p <- pweibull(1,
+                          shape=x$args1$weibull_shape[2],
+                          scale=x$args1$weibull_scale[2])
+
+        discount_function_control <- pweibull(p_hat,
+                                              shape=x$args1$weibull_shape[2],
+                                              scale=x$args1$weibull_scale[2])/max_p
+      } else if(discount_function == "identity"){
+        discount_function_control <- p_hat
+      }
 
       D4 <- data.frame(group = "Control",
                        y     = discount_function_control,
@@ -504,12 +550,12 @@ setMethod("plot", signature(x = "bdpbinomial"), function(x, type=NULL, print=TRU
 #' @export
 setMethod("plot", signature(x = "bdpsurvival"), function(x, type=NULL, print=TRUE){
   args1               <- x$args1
+  discount_function   <- x$args1$discount_function
   posterior_treatment <- x$posterior_treatment
   posterior_control   <- x$posterior_control
   data                <- args1$data
   breaks              <- args1$breaks
   arm2                <- args1$arm2
-  two_side            <- args1$two_side
   method              <- args1$method
 
   ##############################################################################
@@ -630,19 +676,30 @@ setMethod("plot", signature(x = "bdpsurvival"), function(x, type=NULL, print=TRU
   ### - Only makes sense to plot if Current/historical treatment are present or
   ###   both current/historical control are present
   ##############################################################################
-  if(!two_side | method == "mc"){
-    p_hat <- seq(0,1,length.out=100)
-  } else{
-    p_hat <- seq(0,1,length.out=100)
-    p_hat <- ifelse(p_hat>.5,1-p_hat,p_hat)
-  }
+  p_hat <- seq(0,1,length.out=100)
 
   discountfun_plot <- NULL
 
   if(!is.null(args1$S_t) & !is.null(args1$S0_t)){
-    discount_function_treatment <- pweibull(p_hat,
-                                            shape=x$args1$weibull_shape[1],
-                                            scale=x$args1$weibull_scale[1])
+
+    ### Create discount function based on distribution type
+    if(discount_function == "weibull"){
+      discount_function_treatment <- pweibull(p_hat,
+                                              shape=x$args1$weibull_shape[1],
+                                              scale=x$args1$weibull_scale[1])
+    } else if(discount_function == "scaledweibull"){
+      max_p <- pweibull(1,
+                        shape=x$args1$weibull_shape[1],
+                        scale=x$args1$weibull_scale[1])
+
+      discount_function_treatment <- pweibull(p_hat,
+                                              shape=x$args1$weibull_shape[1],
+                                              scale=x$args1$weibull_scale[1])/max_p
+    } else if(discount_function == "identity"){
+      discount_function_treatment <- p_hat
+    }
+
+
     D1 <- data.frame(group = "Treatment",
                      y     = discount_function_treatment,
                      x     = seq(0,1,length.out=100))
@@ -662,9 +719,22 @@ setMethod("plot", signature(x = "bdpsurvival"), function(x, type=NULL, print=TRU
         discountfun_plot <- ggplot()
       }
 
-      discount_function_control <- pweibull(p_hat,
-                                            shape=x$args1$weibull_shape[2],
-                                            scale=x$args1$weibull_scale[2])
+      ### Create discount function based on distribution type
+      if(discount_function == "weibull"){
+        discount_function_control <- pweibull(p_hat,
+                                              shape=x$args1$weibull_shape[2],
+                                              scale=x$args1$weibull_scale[2])
+      } else if(discount_function == "scaledweibull"){
+        max_p <- pweibull(1,
+                          shape=x$args1$weibull_shape[2],
+                          scale=x$args1$weibull_scale[2])
+
+        discount_function_control <- pweibull(p_hat,
+                                              shape=x$args1$weibull_shape[2],
+                                              scale=x$args1$weibull_scale[2])/max_p
+      } else if(discount_function == "identity"){
+        discount_function_control <- p_hat
+      }
 
       D4 <- data.frame(group = "Control",
                        y     = discount_function_control,
@@ -725,126 +795,4 @@ setMethod("plot", signature(x = "bdpsurvival"), function(x, type=NULL, print=TRU
       survival_curves
     }
   }
-})
-
-
-
-#' @title bdpregression Object Plot
-#' @description \code{plot} method for class \code{bdpregression}.
-#' @param x object of class \code{bdpregression}. The result of a call to the
-#'   \code{\link{bdpregression}} function.
-#' @param type character. Optional. Select plot type to print.
-#'   Currently supports "discount", the discount function plot.
-#'
-#' @param print logical. Optional. Produce a plot (\code{print = TRUE}; default) or
-#'   return a ggplot object (\code{print = FALSE}). When \code{print = FALSE},
-#'   it is possible to use \code{ggplot2} syntax to modify the plot appearance.
-#'
-#' @details The \code{plot} method for \code{bdpregression} currently returns
-#'   only the discount function. More plots will be implemented in a future release.
-#'
-#' @import methods
-#' @importFrom utils head
-#' @importFrom ggplot2 aes_string ggtitle ylim guides guide_legend theme element_blank
-#' @importFrom graphics par
-#' @importFrom stats sd density is.empty.model median model.offset model.response pweibull quantile rbeta rgamma rnorm var vcov
-#' @export
-setMethod("plot", signature(x = "bdpregression"), function(x, type=NULL, print=TRUE){
-
-    posterior_treatment <- x$posterior_treatment
-  posterior_control   <- x$posterior_control
-  df_t                <- posterior_treatment$df_t
-  df_c                <- posterior_treatment$df_c
-  two_side            <- x$args1$two_side
-  arm2                <- x$args1$arm2
-  method              <- x$args1$method
-
-
-  ##############################################################################
-  ### Discount function plot
-  ### - Only makes sense to plot if Current/historical treatment are present or
-  ###   both current/historical control are present
-  ##############################################################################
-  if(!two_side | method == "mc"){
-    p_hat <- seq(0,1,length.out=100)
-  } else{
-    p_hat <- seq(0,1,length.out=100)
-    p_hat <- ifelse(p_hat>.5,1-p_hat,p_hat)
-  }
-
-  discountfun_plot <- NULL
-
-  ### Discount function plot for treatment arm
-  discount_function_treatment <- pweibull(p_hat,
-                                          shape=x$args1$weibull_shape[1],
-                                          scale=x$args1$weibull_scale[1])
-  D1 <- data.frame(group = "Treatment",
-                   y     = discount_function_treatment,
-                   x     = seq(0,1,length.out=100))
-  D2 <- data.frame(group=c("Treatment"), p_hat=median(posterior_treatment$p_hat))
-  D3 <- data.frame(group=c("Treatment"), p_hat=median(posterior_treatment$alpha_discount))
-
-  discountfun_plot <- ggplot() +
-    geom_line(data=D1,aes_string(y="y",x="x",color="group"),size=1) +
-    geom_vline(data=D2, aes_string(xintercept="p_hat",color="group"),lty=2) +
-    geom_hline(data=D3, aes_string(yintercept="p_hat",color="group"),lty=2)
-
-
-    if(arm2){
-    if(is.null(discountfun_plot)){
-      discountfun_plot <- ggplot()
-    }
-
-    discount_function_control <- pweibull(p_hat,
-                                          shape=x$args1$weibull_shape[2],
-                                          scale=x$args1$weibull_scale[2])
-
-    D4 <- data.frame(group = "Control",
-                     y     = discount_function_control,
-                     x     = seq(0,1,length.out=100))
-    D5 <- data.frame(group="Control", p_hat=median(posterior_control$p_hat))
-    D6 <- data.frame(group="Control", p_hat=median(posterior_control$alpha_discount))
-
-    discountfun_plot  <- discountfun_plot +
-      geom_line(data=D4,aes_string(y="y",x="x",color="group"),size=1) +
-      geom_vline(data=D5,aes_string(xintercept="p_hat",color="group"),lty=2) +
-      geom_hline(data=D6,aes_string(yintercept="p_hat",color="group"),lty=2)
-    }
-
-    if(!is.null(discountfun_plot)){
-    discountfun_plot <- discountfun_plot +
-      facet_wrap(~group, ncol=1) +
-      theme_bw() +
-      ylab("Alpha Discount Value") +
-      xlab("Stochastic comparison (Current vs Historical Data)") +
-      ggtitle("Discount Function") +
-      ylim(0,1) +
-      guides(fill=guide_legend(title=NULL)) +
-      theme(legend.title=element_blank())
-  }
-
-
-  if(print){
-    if(is.null(type)){
-      op <- par(ask=TRUE)
-      if(!is.null(discountfun_plot)){
-        plot(discountfun_plot)
-      }
-      par(op)
-    } else if (type=="discount"){
-        if(!is.null(discountfun_plot)){
-          plot(discountfun_plot)
-        }
-    }
-  } else{
-    if(is.null(type)){
-      out <- list(discount = list(discountfun_plot))
-      out
-    } else if (type=="discount"){
-      if(!is.null(discountfun_plot)){
-        discountfun_plot
-      }
-    }
-  }
-
 })

@@ -9,16 +9,16 @@
 #'   data is missing then no stochastic comparison nor weight are displayed.
 #'
 #'   In the case of a one-arm analysis, the displayed 95 percent
-#'   confidence interval contains the lower and upper limits of the
+#'   CI contains the lower and upper limits of the
 #'   augmented mean value of the current data. The displayed
 #'   \code{mean of treatment group} is the mean of the current data
 #'   augmented by the historical data.
 #'
 #'   When a control arm is present, a two-arm analysis is carried out.
-#'   Now, the displayed 95 percent confidence interval contains the
+#'   Now, the displayed 95 percent CI contains the
 #'   lower and upper limits of the difference between the treatment and
 #'   control arms with the historical data augmented to current data, if
-#'   present. The displayed augmented sample estimates are the
+#'   present. The displayed posterior sample estimates are the
 #'   mean of the treatment and control arms, each of
 #'   which are augmented when historical data are present.
 #'
@@ -31,7 +31,6 @@ setMethod("summary", signature(object = "bdpnormal"), function(object){
   arm2                <- object$args$arm2
   posterior_treatment <- object$posterior_treatment
   posterior_control   <- object$posterior_control
-  two_side            <- object$args1$two_side
   mu_t                <- object$args1$mu_t
   sigma_t             <- object$args1$sigma_t
   N_t                 <- object$args1$N_t
@@ -78,10 +77,10 @@ setMethod("summary", signature(object = "bdpnormal"), function(object){
         cat("\n")
       }
     }
-    cat("95 percent confidence interval: \n")
+    cat("95 percent CI: \n")
     cat(paste0(" ",mean_CI_t))
     cat("\n")
-    cat("augmented sample estimate:\n")
+    cat("posterior sample estimate:\n")
     cat("mean of treatment group\n")
     cat(paste0(" ",mean_est_t))
     cat("\n")
@@ -154,13 +153,13 @@ setMethod("summary", signature(object = "bdpnormal"), function(object){
         cat("\n")
       }
     }
-    cat("alternative hypothesis: ", ifelse(two_side, "two.sided", "one.sided"))
+    cat("alternative hypothesis: two.sided")
     cat("\n")
 
-    cat("95 percent confidence interval: \n")
+    cat("95 percent CI: \n")
     cat(paste0(" ",comp_CI))
     cat("\n")
-    cat("augmented sample estimates:\n")
+    cat("posterior sample estimates:\n")
     cat("treatment group  control group\n")
     cat(paste0("          ", mean_est_t, "          ", mean_est_c))
     cat("\n")
@@ -180,16 +179,16 @@ setMethod("summary", signature(object = "bdpnormal"), function(object){
 #'   data is missing then no stochastic comparison nor weight are displayed.
 #'
 #'   In the case of a one-arm analysis, the displayed 95 percent
-#'   confidence interval contains the lower and upper limits of the
+#'   CI contains the lower and upper limits of the
 #'   augmented event rate of the current data. The displayed
 #'   \code{probability of success} is the event rate of the current data
 #'   augmented by the historical data.
 #'
 #'   When a control arm is present, a two-arm analysis is carried out.
-#'   Now, the displayed 95 percent confidence interval contains the
+#'   Now, the displayed 95 percent CI contains the
 #'   lower and upper limits of the difference between the treatment and
 #'   control arms with the historical data augmented to current data, if
-#'   present. The displayed augmented sample estimates are the
+#'   present. The displayed posterior sample estimates are the
 #'   event rates of the treatment and control arms, each of
 #'   which are augmented when historical data are present.
 #'
@@ -203,7 +202,6 @@ setMethod("summary", signature(object = "bdpbinomial"), function(object){
   arm2                <- object$args$arm2
   posterior_treatment <- object$posterior_treatment
   posterior_control   <- object$posterior_control
-  two_side            <- object$args1$two_side
   y_t                 <- object$args1$y_t
   N_t                 <- object$args1$N_t
   y_c                 <- object$args1$y_c
@@ -245,11 +243,11 @@ setMethod("summary", signature(object = "bdpbinomial"), function(object){
         cat("\n")
       }
     }
-    cat("95 percent confidence interval: \n")
+    cat("95 percent CI: \n")
     cat(paste0(" ",mean_CI_t))
     cat("\n")
     if(!is.null(N0_t)){
-      cat("augmented sample estimate:\n")
+      cat("posterior sample estimate:\n")
     } else{
       cat("sample estimates:\n")
     }
@@ -330,12 +328,12 @@ setMethod("summary", signature(object = "bdpbinomial"), function(object){
       }
     }
 
-    cat("alternative hypothesis: ", ifelse(two_side, "two.sided", "one.sided"))
+    cat("alternative hypothesis: two.sided")
     cat("\n")
-    cat("95 percent confidence interval:\n")
+    cat("95 percent CI:\n")
     cat(paste0(" "), comp_CI)
     cat("\n")
-    cat("augmented sample estimates:\n")
+    cat("posterior sample estimates:\n")
     cat("prop 1 prop2\n")
     cat(paste0("  ", mean_est_t, "  ", mean_est_c))
 
@@ -541,52 +539,5 @@ setMethod("summary", signature(object = "bdpsurvival"), function(object){
   }
 })
 
-# Helper functions:
 
-pp <- function(m){
-  write.table(format(m, justify="right"),
-              row.names=T, col.names=F, quote=F)
-}
-
-
-#' @title bdpregression Object Summary
-#' @description \code{summary} method for class \code{bdpregression}.
-#' @param object object of class \code{bdpregression}. The result of a call to the
-#'   \code{\link{bdpregression}} function.
-#'
-#' @details Displays a summary of the \code{bdpregression} fit including the
-#'   input data, the stochastic comparison between current and historical
-#'   data, and the resulting historical data weight (alpha). If historical
-#'   data is missing then no stochastic comparison nor weight are displayed.
-#'
-#'   ...
-#'
-#' @import methods
-#' @importFrom utils head
-#' @importFrom utils write.table
-#' @export
-setMethod("summary", signature(object = "bdpregression"), function(object){
-
-
-  posterior_treatment <- object$posterior_treatment
-  posterior_control   <- object$posterior_control
-  arm2                <- object$args1$arm2
-
-  if(!arm2){
-    summ <- summary(posterior_treatment$posterior_regression)
-
-    cat("One-armed bdp regression")
-    cat("\n")
-    print(summ)
-
-    if(!is.null(posterior_treatment$p_hat)){
-      cat(paste0("Stochastic comparison (p_hat) - treatment (current vs. historical data): ",
-                 round(posterior_treatment$p_hat,4)))
-      cat("\n")
-      cat(paste0("Discount function value (alpha) - treatment: ",
-                 round(posterior_treatment$alpha_discount,4)))
-    }
-  }
-
-})
 
