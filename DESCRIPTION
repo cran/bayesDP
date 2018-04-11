@@ -1,8 +1,8 @@
 Package: bayesDP
 Type: Package
 Title: Tools for the Bayesian Discount Prior Function
-Version: 1.3.0
-Date: 2017-12-07
+Version: 1.3.1
+Date: 2018-04-10
 Authors@R: c(person("Shawn", "Balcome", email = "sbalcome@mdic.org", role = c("cre")), person("Donnie", "Musgrove", email = "donald.r.musgrove@medtronic.com", role = c("aut")), person("Tarek", "Haddad", email = "tarek.d.haddad@medtronic.com", role = c("aut")), person("Christopher", "Jackson", email = "chris.jackson@mrc-bsu.cam.ac.uk", role = "ctb", comment="For the ppexp R code that was ported to C++."))
 Depends: R (>= 3.2.3), ggplot2, survival, methods
 Description: Functions for data augmentation using the
@@ -19,10 +19,10 @@ LinkingTo: Rcpp, RcppArmadillo
 RoxygenNote: 6.0.1
 Suggests: testthat, knitr, rmarkdown
 VignetteBuilder: knitr
-Packaged: 2017-12-07 21:49:54 UTC; rstudio
+Packaged: 2018-04-11 11:31:33 UTC; rstudio
 Author: Shawn Balcome [cre],
   Donnie Musgrove [aut],
   Tarek Haddad [aut],
   Christopher Jackson [ctb] (For the ppexp R code that was ported to
     C++.)
-Date/Publication: 2017-12-07 22:02:57 UTC
+Date/Publication: 2018-04-11 16:22:01 UTC

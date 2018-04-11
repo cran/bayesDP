@@ -60,6 +60,7 @@ setMethod("print", signature(x = "bdpsurvival"), function(x){
 
   args1               <- x$args1
   data                <- args1$data
+  data_current        <- args1$data_current
   breaks              <- args1$breaks
   arm2                <- args1$arm2
 
@@ -81,7 +82,7 @@ setMethod("print", signature(x = "bdpsurvival"), function(x){
     s_t    <- with(data_t, Surv(time, status))# , type="mstate"))
     s_t    <- survival::survfitKM(factor(rep(1,n)), s_t)
 
-    print_1arm <- matrix(c(nrow(data_t),
+    print_1arm <- matrix(c(nrow(data_current),
                          sum(s_t$n.event),
                          surv_time,
                          1-median(survival_time_posterior_flat),
@@ -99,4 +100,49 @@ setMethod("print", signature(x = "bdpsurvival"), function(x){
     summary(x)
   }
 
+})
+
+
+
+
+#' @title bdplm Object Print
+#' @description \code{print} method for class \code{bdplm}.
+#' @import methods
+#' @importFrom utils head
+#' @importFrom utils write.table
+#' @importFrom stats density is.empty.model median model.offset model.response pweibull quantile rbeta rgamma rnorm var vcov
+#' @param x object of class \code{bdplm}. The result of a call to the
+#'   \code{\link{bdplm}} function.
+#' @details Displays a print of the \code{bdplm} fit and the initial function call.
+#'   The fit includes the estimate of the intercept, treatment effect, and
+#'   covariate effects. The discount function weight estimates are displayed as well.
+#'   If \code{method}="mc", the median estimate of alpha is displayed.
+#'
+#' @export
+setMethod("print", signature(x = "bdplm"), function(x){
+
+  # Format coefficients
+  coefs <- x$estimates$coefficients
+  p     <- ncol(coefs)
+  coefs <- coefs[,-p]
+  names(coefs)[1] <- "(Intercept)"
+  coefs[1,] <- round(coefs[1,], 3)
+  dimnames(coefs) <- list("", names(coefs))
+
+  # Format alpha
+  alpha_mat <- apply(x$alpha_discount, 2, median)
+  alpha_mat <- matrix(alpha_mat, nrow=1)
+  dimnames(alpha_mat) <- list("", names(x$alpha_discount))
+
+  # Print output
+  cat("\n")
+  cat("Call:\n")
+  print(x$args1$call)
+  cat("\n\n")
+  cat("Coefficients:\n")
+  print(coefs)
+  cat("\n\n")
+  cat("Discount function value (alpha):\n")
+  print(alpha_mat)
+  cat("\n")
 })
