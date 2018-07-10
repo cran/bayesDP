@@ -1,3 +1,8 @@
+# bayesDP 1.3.2
+## Bug fixes and minor improvements
+* Minor bdplm vignette typo fixes
+
+
 # bayesDP 1.3.1
 ## Major new features
 * Changes to inputs for bdpsurvival

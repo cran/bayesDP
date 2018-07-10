@@ -12,7 +12,7 @@
 
 <meta name="author" content="Donnie Musgrove" />
 
-<meta name="date" content="2018-04-11" />
+<meta name="date" content="2018-07-10" />
 
 <title>BayesDP</title>
 
@@ -70,7 +70,7 @@ code > span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Inf
 
 <h1 class="title toc-ignore">BayesDP</h1>
 <h4 class="author"><em>Donnie Musgrove</em></h4>
-<h4 class="date"><em>2018-04-11</em></h4>
+<h4 class="date"><em>2018-07-10</em></h4>
 
 
 <div id="TOC">
@@ -115,7 +115,13 @@ code > span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Inf
 <div id="estimation-of-the-historical-data-weight" class="section level2">
 <h2>Estimation of the historical data weight</h2>
 <p>In the first estimation step, the historical data weight <span class="math inline">\(\hat{\alpha}\)</span> is estimated. In the case of a two-arm trial, where both treatment and control data are available, an <span class="math inline">\(\hat{\alpha}\)</span> value is estimated separately for each of the treatment and control arms. Of course, historical treatment or historical control data must be present, otherwise <span class="math inline">\(\hat{\alpha}\)</span> is not estimated for the corresponding arm.</p>
-<p>When historical data are available, estimation of <span class="math inline">\(\hat{\alpha}\)</span> is carried out as follows. Let <span class="math inline">\(\boldsymbol{y}\)</span> and <span class="math inline">\(\boldsymbol{y}_0\)</span> denote the current and historical data, respectively. The following linear regression model is then fit to the data: <span class="math display">\[y_i = \tilde{\beta}_0 + \tilde{\beta}_1I(historical_i) + x_{1i}\tilde{\beta}_2 + \cdots+x_{mi}\tilde{\beta}_m + \varepsilon_i, \varepsilon_i \sim \mathcal{N}ormal\left(0,\,\sigma^2\right),\,\,\,i=1,\dots,n,\]</span> where <span class="math inline">\(I(historical_i)\)</span> indicates whether observation <span class="math inline">\(i\)</span> is historical. With vague priors on each parameter, we estimate the posterior probability that <span class="math inline">\(\tilde{\beta}_1 \ne 0\)</span>, i.e., <span class="math inline">\(p = Pr\left(\tilde{\beta_1} \ne 0 \mid \boldsymbol{y}, \boldsymbol{y}_0, \tilde{\beta}_0, \tilde{\beta}_2, \dots, \tilde{\beta}_m,\sigma^2\right)\)</span>.</p>
+<p>When historical data are available, estimation of <span class="math inline">\(\hat{\alpha}\)</span> is carried out as follows. Let <span class="math inline">\(\boldsymbol{y}\)</span> and <span class="math inline">\(\boldsymbol{y}_0\)</span> denote the current and historical data, respectively. The following linear regression model is then fit to the data: <span class="math display">\[y_i = \tilde{\beta}_0 + \tilde{\beta}_1I(historical_i) + x_{2i}\tilde{\beta}_2 + \cdots+x_{mi}\tilde{\beta}_m + \varepsilon_i, \varepsilon_i \sim \mathcal{N}ormal\left(0,\,\sigma^2\right),\,\,\,i=1,\dots,n,\]</span> where <span class="math inline">\(I(historical_i)\)</span> indicates whether observation <span class="math inline">\(i\)</span> is historical. With vague priors on each parameter, we estimate the posterior probability that <span class="math inline">\(\tilde{\beta}_1 &gt; 0\)</span> by first computing <span class="math inline">\(p_1 = Pr\left(\tilde{\beta_1} &gt; 0 \mid \boldsymbol{y}, \boldsymbol{y}_0\right)\)</span>. Then, we calculate the posterior probability <span class="math inline">\(p\)</span> as</p>
+<p><span class="math display">\[
+p=\begin{cases}
+2p_{1}, &amp; p_{1}\le0.5\\
+2\left(1-p_{1}\right), &amp; p_{1}&gt;0.5.
+\end{cases}
+\]</span></p>
 <p>Finally, for a discount function, denoted <span class="math inline">\(W\)</span>, <span class="math inline">\(\hat{\alpha}\)</span> is computed as <span class="math display">\[
 \hat{\alpha} = \alpha_{max}\cdot W\left(p, \,w\right),\,0\le p\le1,
 \]</span> where <span class="math inline">\(w\)</span> may be one or more parameters associated with the discount function and <span class="math inline">\(\alpha_{max}\)</span> scales the weight <span class="math inline">\(\hat{\alpha}\)</span> by a user-input maximum value. More details on the discount functions are given in the discount function section below.</p>
@@ -155,7 +161,7 @@ p1 <span class="op">+</span><span class="st"> </span><span class="kw">ggtitle</s
 \\
 \boldsymbol{\beta} &amp; \sim &amp; \mathcal{N}\left(\boldsymbol{\mu}_{\beta},\thinspace\boldsymbol{\Sigma}_{\beta}\right),
 \end{array}
-\]</span> where <span class="math inline">\(\boldsymbol{\mu}_{\beta}=\left(\mu_0,\,\mu_1,\,\mu_2,\dots,\,\mu_m\right)^T\)</span> and <span class="math inline">\(\boldsymbol{\Sigma}_{\beta}=\mbox{diag}\left(\tau^2_0/\alpha_{00},\,\tau^2_1/\alpha{01},\,\tau^2_2,\dots,\tau^2_m\right)\)</span> are known and <span class="math inline">\(\boldsymbol{\Sigma}_y=\sigma^2\mathbf{I}_n\)</span>. Here, <span class="math inline">\(\mu_0\)</span> and <span class="math inline">\(\mu_1\)</span> are the prior means of the control and treatment effects, respectively, while <span class="math inline">\(\mu_2,\dots,\,\mu_m\)</span> are the prior means of the covariate effects. Likewise, <span class="math inline">\(\tau^2_0/\alpha_{00}\)</span> and <span class="math inline">\(\tau^2_1/\alpha_{01}\)</span> are the prior variances of the control and treatment effects (weighted by the discount function result <span class="math inline">\(\alpha\)</span>), respectively, while <span class="math inline">\(\tau^2_2,\dots,\tau^2_m\)</span> are the prior variances of the remaining covariate effects.</p>
+\]</span> where <span class="math inline">\(\boldsymbol{\mu}_{\beta}=\left(\mu_0,\,\mu_1,\,\mu_2,\dots,\,\mu_m\right)^T\)</span> and <span class="math inline">\(\boldsymbol{\Sigma}_{\beta}=\mbox{diag}\left(\tau^2_0/\alpha_{00},\,\tau^2_1/\alpha_{01},\,\tau^2_2,\dots,\tau^2_m\right)\)</span> are known and <span class="math inline">\(\boldsymbol{\Sigma}_y=\sigma^2\mathbf{I}_n\)</span>. Here, <span class="math inline">\(\mu_0\)</span> and <span class="math inline">\(\mu_1\)</span> are the prior means of the control and treatment effects, respectively, while <span class="math inline">\(\mu_2,\dots,\,\mu_m\)</span> are the prior means of the covariate effects. Likewise, <span class="math inline">\(\tau^2_0/\alpha_{00}\)</span> and <span class="math inline">\(\tau^2_1/\alpha_{01}\)</span> are the prior variances of the control and treatment effects (weighted by the discount function result <span class="math inline">\(\alpha\)</span>), respectively, while <span class="math inline">\(\tau^2_2,\dots,\tau^2_m\)</span> are the prior variances of the remaining covariate effects.</p>
 <p>Using what we refer to as the Gelman parameterization (see Gelman’s Bayesian Data Analysis, 3rd edition, chapter 14, for more information), the model can be reparameterized to improve computational efficiency. First, write <span class="math display">\[
 \mathbf{y}_{\ast}=\left(\begin{array}{c}
 \mathbf{y}\\
