@@ -1,4 +1,4 @@
-## ---- SETTINGS-knitr, include=FALSE-------------------------------------------
+## ----SETTINGS-knitr, include=FALSE--------------------------------------------
 library(bayesDP)
 stopifnot(require(knitr))
 opts_chunk$set(
@@ -26,11 +26,11 @@ fit_scaledweibull <- bdpbinomial(y_t=10, N_t=500, y0_t=25, N0_t=250,
 fit_identity <- bdpbinomial(y_t=10, N_t=500, y0_t=10, N0_t=250,
                             method="fixed")
 
-## ---- echo=FALSE--------------------------------------------------------------
+## ----echo=FALSE---------------------------------------------------------------
 df2 <- plot(fit_identity, type="discount", print=FALSE)
 df2 + ggtitle("Discount function plot", "Identity")
 
-## ---- echo=FALSE--------------------------------------------------------------
+## ----echo=FALSE---------------------------------------------------------------
 df1 <- plot(fit02, type="discount", print=FALSE)
 df1 + ggtitle("Discount function plot", "Weibull distribution with shape=3 and scale=0.135")
 
@@ -57,7 +57,7 @@ fit1 <- bdpsurvival(Surv(time, status) ~ 1,
                     method = "fixed")
 print(fit1)
 
-## ---- include=FALSE-----------------------------------------------------------
+## ----include=FALSE------------------------------------------------------------
 survival_time_posterior <- ppexp(5,
                                  fit1$posterior_treatment$posterior_hazard,
                                  cuts=c(0,fit1$args1$breaks))
