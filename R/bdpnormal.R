@@ -46,8 +46,11 @@
 #'   10000.
 #' @param method character. Analysis method with respect to estimation of the
 #'   weight parameter alpha. Default method "\code{mc}" estimates alpha for each
-#'   Monte Carlo iteration. Alternate value "\code{fixed}" estimates alpha once
-#'   and holds it fixed throughout the analysis.  See the the \code{bdpnormal}
+#'   Monte Carlo iteration. Under "\code{mc}", the stochastic comparison
+#'   probability is recomputed at each Monte Carlo draw, so the resulting
+#'   \code{alpha_discount} is a random vector and may exhibit substantial
+#'   Monte Carlo variability. Alternate value "\code{fixed}" estimates alpha
+#'   once and holds it fixed throughout the analysis. See the \code{bdpnormal}
 #'   vignette \cr \code{vignette("bdpnormal-vignette", package="bayesDP")} for
 #'   more details.
 #' @param compare logical. Should a comparison object be included in the fit?
@@ -272,7 +275,6 @@ setMethod(
     intent <- c()
     if (length(mu_t + sigma_t + N_t) != 0) {
       intent <- c(intent, "current treatment")
-      # cat("Current Treatment\n")
     } else {
       if (is.null(mu_t) == TRUE) {
         cat("mu_t missing\n")
@@ -288,7 +290,6 @@ setMethod(
 
     if (length(mu0_t + sigma0_t + N0_t) != 0) {
       intent <- c(intent, "historical treatment")
-      # cat("Historical Treatment\n")
     } else {
       if (length(c(mu0_t, sigma0_t, N0_t)) > 0) {
         if (is.null(mu0_t) == TRUE) {
@@ -306,7 +307,6 @@ setMethod(
 
     if (length(mu_c + sigma_c + N_c) != 0) {
       intent <- c(intent, "current control")
-      # cat("Current Control\n")
     } else {
       if (length(c(mu_c, sigma_c, N_c)) > 0) {
         if (is.null(mu_c) == TRUE) {
@@ -324,7 +324,6 @@ setMethod(
 
     if (length(mu0_c + sigma0_c + N0_c) != 0) {
       intent <- c(intent, "historical control")
-      # cat("Historical Contro\nl")
     } else {
       if (length(c(mu0_c, sigma0_c, N0_c)) > 0) {
         if (is.null(mu0_c) == TRUE) {
@@ -433,10 +432,8 @@ setMethod(
       number_mcmc = number_mcmc,
       method = method,
       arm2 = arm2,
-      intent = paste(intent,
-                     collapse = ", ",
-                     compare = compare
-      )
+      compare = compare,
+      intent = paste(intent, collapse = ", ")
     )
 
     ##############################################################################
@@ -479,7 +476,12 @@ posterior_normal <- function(mu, sigma, N, mu0, sigma0, N0, discount_function,
                              weibull_shape, method) {
 
   # Compute posterior(s) of current (flat) and historical (prior) data
-  # with non-informative priors
+  # with non-informative priors p(mu, sigma2) propto 1 / sigma2. This gives the
+  # standard conjugate posterior:
+  #   sigma2 | data ~ Inv-Gamma((N - 1) / 2, (N - 1) * sigma^2 / 2)
+  #   mu | sigma2   ~ Normal(mu, sigma2 / N)
+  # The scale below uses ((N - 1) + 1) = N, i.e. the conjugate posterior of the
+  # mean (not the posterior predictive, which would use sigma2 * (1 + 1 / N)).
   # Current data:
   if (!is.null(N)) {
     posterior_flat_sigma2 <- 1 / rgamma(number_mcmc, (N - 1) / 2, ((N - 1) * sigma^2) / 2)
@@ -547,13 +549,19 @@ posterior_normal <- function(mu, sigma, N, mu0, sigma0, N0, discount_function,
   #   will return the posterior of the non-missing data (with flat prior)
   ##############################################################################
 
-  ### If only the historical data is present, compute posterior on historical
+  ### If only the current data are present, return its conjugate posterior of
+  ### the mean. posterior_flat_mu is already drawn from N(mu, sigma2 / N), so it
+  ### is the posterior of the mean -- do not add a second (observation-level)
+  ### rnorm layer, which would inflate the variance to ~ sigma2 (a posterior-
+  ### predictive draw). The variance of the mean is sigma2 / N.
   if (is.null(N0) & !is.null(N)) {
-    posterior_sigma2 <- posterior_flat_sigma2
-    posterior_mu <- rnorm(number_mcmc, posterior_flat_mu, sqrt(posterior_sigma2))
+    posterior_sigma2 <- posterior_flat_sigma2 / N
+    posterior_mu <- posterior_flat_mu
   } else if (!is.null(N0) & is.null(N)) {
-    posterior_sigma2 <- prior_sigma2
-    posterior_mu <- rnorm(number_mcmc, prior_mu, sqrt(posterior_sigma2))
+    ### Only the historical data are present: return its conjugate posterior of
+    ### the mean (prior_mu is already drawn from N(mu0, sigma2_0 / N0)).
+    posterior_sigma2 <- prior_sigma2 / N0
+    posterior_mu <- prior_mu
   } else if (!is.null(N0) & !is.null(N)) {
     effective_N0 <- N0 * alpha_discount
 

@@ -1,3 +1,115 @@
+# bayesDP 1.3.8
+
+## Bug fixes
+
+* Fixed `bdplm()` and `bdplogit()` producing invalid historical borrowing when
+  covariates were not mean-centered. Because the models use an intercept-free
+  parameterization (separate treatment and control means), uncentered
+  covariates made the arm-mean estimators strongly correlated and inflated
+  their standard errors as extrapolation errors at covariate = 0, corrupting
+  the (diagonal) discount prior. Both functions now automatically mean-center
+  covariates on their pooled (current plus historical) mean and back-transform
+  the reported intercept, so estimates are invariant to covariate location
+  shifts (#1)
+* Fixed a bug where the `summary` methods for `bdpnormal` and `bdpbinomial`
+  read the one-/two-arm indicator from the wrong list element (`args` instead
+  of `args1`), causing two-arm fits to be summarised as one-arm
+* Fixed a bug in the two-arm `bdpsurvival` summary that errored when current
+  control data were absent
+* Fixed an invalid matrix index (`Y[, 0]`) used when computing the default
+  `surv_time` in `bdpsurvival`
+* Fixed the `compare` argument being silently dropped (passed into `paste()`)
+  rather than stored in the `bdpnormal` and `bdpbinomial` fit objects
+* Fixed the `mc` discount-weight Z-statistic in `bdplm` to divide by the
+  standard error rather than the variance
+* Fixed `plot` methods hanging on the interactive "Hit <Return>" prompt in
+  non-interactive sessions (e.g. tests, CI); `par(ask = ...)` now respects
+  `interactive()`
+* Fixed `bdplogit()` failing during its main model fit because the analysis
+  data passed to `MCMClogit()` omitted the response variable. The discounted
+  prior precision matrix is now also passed to `MCMClogit()` correctly (#12).
+* Fixed `alpha_discount()` so `alpha_max` is respected when
+  `discount_function = "identity"` (#6).
+* Fixed `bdpnormal()` one-arm normal fits with only one source of data for an
+  arm (current-only or historical-only internally) returning an over-dispersed
+  `posterior_mu`. These branches now return the conjugate posterior of the mean
+  rather than adding an extra observation-level draw (posterior-predictive-like
+  variance) (#15).
+
+## Tests
+
+* Re-enabled the `testthat` test harness (`tests/testthat.R`)
+* Rewrote the test suite with `expect_*()` assertions: augmented one-arm
+  binomial and normal posterior means are pinned against their closed-form
+  conjugate values, and the fixed bugs (one-/two-arm dispatch, stored
+  `compare` flag, default survival time, two-arm survival summary) are now
+  guarded by tests. Plot calls in tests pass an explicit `type` so they no
+  longer prompt for input.
+* Expanded test coverage from ~60% to ~76%, adding tests for
+  `alpha_discount()` and `probability_discount()` (both now fully covered),
+  the `ppexp()` vector and matrix paths, the `print` methods (now fully
+  covered), additional `plot` branches, input-validation paths, the
+  `bdplogit()` main fit path, factor-covariate handling in `bdplm()` and
+  `bdplogit()`, and the `mc` discounting method for `bdpnormal` and
+  `bdpbinomial`
+* Added regression tests pinning the `bdpnormal` flat-prior draw of the mean
+  (`posterior_flat_mu`) and the fixed current-only `posterior_mu` against their
+  closed-form conjugate (Student-t) variance
+* Expanded `method="mc"` documentation in the binomial, normal, and survival
+  interfaces/vignettes to note that per-iteration recomputation of the
+  stochastic comparison yields a random `alpha_discount` sequence that can show
+  noticeable Monte Carlo variability (#4)
+* Guarded the plotting tests with a null graphics device so they no longer
+  write a stray `Rplots.pdf`
+
+## Documentation
+
+* Clarified the `prior_covariate_sd` documentation in `bdplm()` and
+  `bdplogit()` to note that covariate effects carry an intentional near-zero
+  discount weight, making their priors effectively flat. The supplied value has
+  negligible influence on the posterior, and the effective prior standard
+  deviation is roughly 1e6 larger than the nominal value at the default (#2)
+
+## Housekeeping
+
+* Removed AppVeyor continuous integration
+* Updated GitHub Actions workflows to the latest `r-lib/actions` examples
+  (`actions/checkout@v6`, `codecov/codecov-action@v6`,
+  `actions/upload-artifact@v7`)
+* Made Codecov upload issues non-fatal in the coverage workflow so tests and
+  coverage generation remain the CI gate while Codecov service/signature
+  failures do not fail the build
+* Added a `pkgdown` website and accompanying GitHub Actions workflow
+* Replaced deprecated `ggplot2::aes_string()` with `aes()` and the `.data`
+  pronoun in all `plot` methods
+* Replaced deprecated `size` aesthetic with `linewidth` in `geom_line()` calls
+* De-duplicated the internal `model.matrixBayes()` helper (previously defined
+  identically in both `bdplm` and `bdplogit`) into a single internal file
+* Removed leftover commented-out debugging code
+* Collapsed a redundant conditional in `posterior_survival()` where both
+  branches initialized identical hazard matrices (#8)
+* Tidied the `mc` sigma2 sampling in `bdplm()` and kept the sampling weights
+  aligned with the candidate grid when some marginal log-likelihoods are
+  non-finite (#9)
+* `ppexp()` now validates its `x` argument and errors with an informative
+  message when it is neither a numeric vector nor a matrix (#10)
+* Survival curves in the `plot` and `summary` methods are now computed with a
+  vectorised C++ routine (`ppexpMV`) that transposes the hazard matrix once
+  across all time points, instead of looping `ppexp()` per time point (#11)
+* Avoided recomputing the per-interval sufficient statistics in
+  `posterior_survival()`; the augmentation step now reuses the values already
+  computed during the discount phase (#7)
+* Removed a redundant `useDynLib()` directive in the package namespace
+* Added contributor guidance documenting the `NEWS.md` subsection convention
+  for future releases
+* Expanded `README.md` with links, supported analyses, examples, and citation
+  guidance (#13)
+* Added the CRAN package URL to `DESCRIPTION` (#14)
+* Clarified in `posterior_normal()` that the flat-prior draw of the mean is the
+  conjugate posterior (scale `sqrt(sigma^2 / N)`), not the posterior predictive
+* Gave each vignette a descriptive title (previously all titled "BayesDP") and
+  removed unused `params`/`EVAL` scaffolding from the vignette headers
+
 # bayesDP 1.3.7
 
 * Updated GitHub actions workflows

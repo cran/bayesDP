@@ -53,10 +53,14 @@
 #'   weight of the historical control group.
 #' @param method character. Analysis method with respect to estimation of the
 #'   weight parameter alpha. Default method "\code{mc}" estimates alpha for each
-#'   Monte Carlo iteration. Alternate value "\code{fixed}" estimates alpha once
-#'   and holds it fixed throughout the analysis.  See the the \code{bdpsurvival}
-#'   vignette \cr \code{vignette("bdpsurvival-vignette", package="bayesDP")} for
-#'   more details.
+#'   Monte Carlo iteration. Under "\code{mc}", the stochastic comparison
+#'   probability is recomputed at each Monte Carlo draw, so the resulting
+#'   \code{alpha_discount} is a random vector and may exhibit substantial
+#'   Monte Carlo variability. Alternate value "\code{fixed}" estimates alpha
+#'   once and holds it fixed throughout the analysis. See the
+#'   \code{bdpsurvival} vignette \cr
+#'   \code{vignette("bdpsurvival-vignette", package="bayesDP")} for more
+#'   details.
 #' @param compare logical. Should a comparison object be included in the fit?
 #'   For a one-arm analysis, the comparison object is simply the posterior chain
 #'   of the treatment group parameter. For a two-arm analysis, the comparison
@@ -470,9 +474,11 @@ setMethod(
 
     # if(arm2) stop("Two arm trials are not currently supported.")
 
-    ### If surv_time is null, replace with median time
+    ### If surv_time is null, replace with median of combined
+    ### current + historical times
     if (is.null(surv_time) & !arm2) {
-      surv_time <- median(c(Y[, 1], Y[, 0]))
+      all_times <- if (!is.null(Y0)) c(Y[, 1], Y0[, 1]) else Y[, 1]
+      surv_time <- median(all_times)
     }
 
     ### Check inputs
@@ -553,6 +559,10 @@ setMethod(
       final <- NULL
     } else {
       if (arm2) {
+        ### Approximate common log-hazard ratio across piecewise intervals using
+        ### inverse-variance weighting of R_j = log(lambda_jT) - log(lambda_jC).
+        ### See the bdpsurvival vignette, 'Piecewise Exponential Model
+        ### Background', lines 72-93.
         R0 <- log(posterior_treatment$posterior_hazard) - log(posterior_control$posterior_hazard)
         V0 <- 1 / apply(R0, 2, var)
         logHR0 <- R0 %*% V0 / sum(V0)
@@ -615,11 +625,7 @@ posterior_survival <- function(S, S0, surv_time, discount_function,
     a_post <- b_post <- numeric(nInt)
     a_post0 <- b_post0 <- numeric(nInt)
 
-    if (!is.null(S)) {
-      posterior_flat_hazard <- prior_hazard <- matrix(NA, number_mcmc, nInt)
-    } else {
-      posterior_flat_hazard <- prior_hazard <- matrix(NA, number_mcmc, nInt)
-    }
+    posterior_flat_hazard <- prior_hazard <- matrix(NA, number_mcmc, nInt)
 
     ### Compute posterior values
     for (i in 1:nInt) {
@@ -767,9 +773,13 @@ posterior_survival <- function(S, S0, surv_time, discount_function,
       Z <- abs(R) / V0
       p_hat <- 2 * (1 - pnorm(Z))
     } else if (method == "fixed") {
+      ### Approximate common log-hazard ratio across piecewise intervals using
+      ### inverse-variance weighting of R_j = log(lambda_j,0) - log(lambda_j).
+      ### See the bdpsurvival vignette, 'Piecewise Exponential Model
+      ### Background', lines 72-93.
       R0 <- log(prior_hazard) - log(posterior_flat_hazard)
       V0 <- 1 / apply(R0, 2, var)
-      logHR0 <- R0 %*% V0 / sum(V0) # weighted average  of SE^2
+      logHR0 <- R0 %*% V0 / sum(V0)
       p_hat <- mean(logHR0 > 0) # larger is higher failure
       p_hat <- 2 * ifelse(p_hat > 0.5, 1 - p_hat, p_hat)
     } else {
@@ -806,13 +816,10 @@ posterior_survival <- function(S, S0, surv_time, discount_function,
 
   posterior_hazard <- matrix(NA, number_mcmc, nInt)
 
+  ### Reuse the interval sufficient statistics (a_post, b_post, a_post0,
+  ### b_post0) computed in the discount phase above; both S and S0 are
+  ### guaranteed to be present here, so they do not need recomputing.
   for (i in 1:nInt) {
-    a_post0[i] <- a0 + sum(subset(S0, interval == S0_int[i])$status)
-    b_post0[i] <- b0 + sum(subset(S0, interval == S0_int[i])$exposure)
-
-    a_post[i] <- a0 + sum(subset(S, interval == S_int[i])$status)
-    b_post[i] <- b0 + sum(subset(S, interval == S_int[i])$exposure)
-
     ### Add on a very small value to avoid underflow
     posterior_hazard[, i] <- rgamma(
       number_mcmc,

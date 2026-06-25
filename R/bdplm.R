@@ -31,7 +31,13 @@
 #'   covariate effect(s). Default value is 1e4. If a single value is input, the
 #'   the scalar is repeated to the length of the input covariates. Otherwise,
 #'   care must be taken to ensure the length of the input matches the number of
-#'   covariates.
+#'   covariates. Note that covariate effects are intentionally assigned a
+#'   near-zero historical discount weight, so their priors are effectively flat:
+#'   the value supplied here has negligible influence on the posterior, and the
+#'   effective prior standard deviation is much larger than the nominal value
+#'   (by a factor of roughly 1e6 at the default). In practice the covariate
+#'   coefficients are estimated almost entirely from the current data, and the
+#'   posterior is insensitive to this argument across many orders of magnitude.
 #' @param discount_function character. Specify the discount function to use.
 #'   Currently supports \code{weibull}, \code{scaledweibull}, and
 #'   \code{identity}. The discount function \code{scaledweibull} scales the
@@ -89,6 +95,26 @@
 #'   The formula must include an intercept (i.e., do not use \code{-1} in the
 #'   formula) and both data and data0 must be present. The column names of data
 #'   and data0 must match. See \code{examples} below for example usage.
+#'
+#'   Internally, the model is parameterized without a fixed intercept, using
+#'   separate treatment and control means rather than an intercept plus a
+#'   treatment effect. In this parameterization the arm means are the fitted
+#'   values at covariate = 0, so when covariates are not centered the
+#'   treatment- and control-mean estimators become strongly correlated and
+#'   their standard errors are extrapolation errors at covariate = 0. This
+#'   distorts the discount-prior construction and the historical borrowing. To
+#'   guard against this, \code{bdplm} automatically mean-centers each covariate
+#'   on its pooled (current plus historical) mean before fitting, and
+#'   back-transforms the reported intercept onto the original covariate scale.
+#'   Specifically, if \eqn{\bar{x}_j} is the pooled mean of covariate \eqn{j}
+#'   and \eqn{\beta_j} its estimated effect, the reported intercept is
+#'   \eqn{\beta_0 = \beta_0^{c} - \sum_j \beta_j \bar{x}_j}, where
+#'   \eqn{\beta_0^{c}} is the control-arm mean estimated on the centered scale.
+#'   The treatment effect and covariate slopes are unchanged by centering; the
+#'   reported \code{intercept} remains the control-arm mean at covariate = 0 on
+#'   the original scale. As a result, estimates are invariant to a location
+#'   shift of any covariate, and users do not need to center covariates
+#'   themselves.
 #'
 #'   The underlying model results in a marginal posterior distribution for the
 #'   error variance \code{sigma2} that does not have a known distribution. Thus,
@@ -380,17 +406,38 @@ setMethod(
 
     df <- rbind(df, df0)
 
+    ### Count number of covariates
+    names_df <- names(df)
+    covs_df <- names_df[!(names_df %in% c("Y", "intercept", "treatment", "historical"))]
+    n_covs <- length(covs_df)
+
+    ##############################################################################
+    # Mean-center covariates
+    #
+    # The model is parameterized without a fixed intercept, using separate
+    # treatment and control means (i.e., Y ~ -1 + treatment + control + covs).
+    # In this parameterization the arm means are the fitted values at
+    # covariate = 0. When covariates are not centered these arm-mean estimators
+    # become strongly correlated and their standard errors are extrapolation
+    # errors at covariate = 0, which breaks the (diagonal) discount-prior
+    # construction and corrupts the historical borrowing. Centering each
+    # covariate on its pooled (current + historical) mean restores the intended
+    # behavior. The centering is reversed on the posterior intercept below so
+    # that reported quantities remain on the original covariate scale.
+    ##############################################################################
+
+    covariate_means <- vapply(covs_df, function(nm) mean(df[[nm]]), numeric(1))
+
+    for (nm in covs_df) {
+      df[[nm]] <- df[[nm]] - covariate_means[[nm]]
+    }
+
     ### Split data into separate treatment & control dataframes
     df_t <- subset(df, treatment == 1)
     df_c <- subset(df, treatment == 0)
 
     ### Also create current data dataframe
     df_current <- subset(df, historical == 0, select = -intercept)
-
-    ### Count number of covariates
-    names_df <- names(df)
-    covs_df <- names_df[!(names_df %in% c("Y", "intercept", "treatment", "historical"))]
-    n_covs <- length(covs_df)
 
     ##############################################################################
     # Estimate discount weights for each of the treatment and control arms
@@ -425,14 +472,17 @@ setMethod(
 
     if (is.null(prior_treatment_effect) | is.null(prior_control_effect) |
         is.null(prior_treatment_sd) | is.null(prior_control_sd)) {
-      df0$control <- 1 - df0$treatment
+      ### Use the centered historical data so the prior arm means are estimated
+      ### on the same (centered) covariate scale as the current-data design.
+      df0_centered <- subset(df, historical == 1)
+      df0_centered$control <- 1 - df0_centered$treatment
 
-      cnames0 <- names(df0)
+      cnames0 <- names(df0_centered)
       cnames0 <- cnames0[!(cnames0 %in% c("Y", "intercept", "historical", "treatment", "control"))]
       cnames0 <- c("treatment", "control", cnames0)
       f0 <- paste0("Y~ -1+", paste0(cnames0, collapse = "+"))
 
-      fit_0 <- lm(f0, data = df0)
+      fit_0 <- lm(f0, data = df0_centered)
       summ_0 <- summary(fit_0)
 
       if (is.null(prior_treatment_effect)) prior_treatment_effect <- summ_0$coef[1, 1]
@@ -569,15 +619,18 @@ setMethod(
         ystar = ystar
       )
 
-      ### Normalize the marginal posteriors (log-likelihoods) and exponentiate
+      ### Normalize the marginal posteriors (log-likelihoods) and exponentiate.
+      ### Non-finite log-likelihoods are given zero sampling weight so that the
+      ### weight vector stays aligned with the candidate grid.
       logL <- sigma2candidates$logL
-      logL <- logL[is.finite(logL)]
-      normL <- logL[which.min(abs(logL))]
-      L <- exp(logL - normL)
+      finite <- is.finite(logL)
+      normL <- logL[finite][which.min(abs(logL[finite]))]
+      L <- numeric(length(logL))
+      L[finite] <- exp(logL[finite] - normL)
 
       ### Sample with replacement from marginal posterior density of sigma2
       sigma2_sampleid <- sample(
-        x = 1:number_mcmc_sigmagrid,
+        x = seq_len(number_mcmc_sigmagrid),
         size = number_mcmc_sigma,
         replace = TRUE,
         prob = L
@@ -602,7 +655,17 @@ setMethod(
     names(beta_samples) <- c("treatment", "control", covs_df, "sigma")
 
     ### Estimate posterior of intercept and treatment effect
+    ### The control coefficient is the control-arm mean at centered covariate
+    ### = 0, i.e. at the original covariate means. Back-transform to the
+    ### original scale so the reported intercept is the control mean at
+    ### covariate = 0. The treatment effect (difference of arm means) and the
+    ### covariate slopes are unaffected by centering.
     beta_samples$intercept <- beta_samples$control
+    if (n_covs > 0) {
+      covariate_shift <- as.matrix(beta_samples[, covs_df, drop = FALSE]) %*%
+        covariate_means[covs_df]
+      beta_samples$intercept <- beta_samples$intercept - as.vector(covariate_shift)
+    }
     beta_samples$treatment <- beta_samples$treatment - beta_samples$control
     beta_samples$sigma <- sqrt(beta_samples$sigma)
 
@@ -679,7 +742,7 @@ discount_lm <- function(df, discount_function, alpha_max, fix_alpha,
     p_hat <- mean(beta > 0)
     p_hat <- 2 * ifelse(p_hat > 0.5, 1 - p_hat, p_hat)
   } else if (method == "mc") {
-    Z <- abs(beta) / sigma2_beta
+    Z <- abs(beta) / sqrt(sigma2_beta)
     p_hat <- 2 * (1 - pnorm(Z))
   }
 
@@ -711,87 +774,4 @@ discount_lm <- function(df, discount_function, alpha_max, fix_alpha,
     alpha_discount = alpha_discount
   )
   res
-}
-
-
-model.matrixBayes <- function(object, data = environment(object), contrasts.arg = NULL,
-                              xlev = NULL, keep.order = FALSE, drop.baseline = FALSE, ...) {
-  t <- if (missing(data)) {
-    terms(object)
-  } else {
-    terms.formula(object, data = data, keep.order = keep.order)
-  }
-
-  attr(t, "intercept") <- attr(object, "intercept")
-  if (is.null(attr(data, "terms"))) {
-    data <- model.frame(object, data, xlev = xlev)
-  } else {
-    reorder <- match(sapply(attr(t, "variables"), deparse, width.cutoff = 500)[-1], names(data))
-    if (anyNA(reorder)) {
-      stop("model frame and formula mismatch in model.matrix()")
-    }
-    if (!identical(reorder, seq_len(ncol(data)))) {
-      data <- data[, reorder, drop = FALSE]
-    }
-  }
-
-  int <- attr(t, "response")
-  if (length(data)) { # otherwise no rhs terms, so skip all this
-    if (drop.baseline) {
-      contr.funs <- as.character(getOption("contrasts"))
-    } else {
-      contr.funs <- as.character(list("contr.bayes.unordered", "contr.bayes.ordered"))
-    }
-
-    namD <- names(data)
-
-    ## turn  character columns into factors
-    for (i in namD) {
-      if (is.character(data[[i]])) {
-        data[[i]] <- factor(data[[i]])
-        warning(gettextf("variable '%s' converted to a factor", i), domain = NA)
-      }
-    }
-    isF <- vapply(data, function(x) is.factor(x) || is.logical(x), NA)
-    isF[int] <- FALSE
-    isOF <- vapply(data, is.ordered, NA)
-    for (nn in namD[isF]) { # drop response
-      if (is.null(attr(data[[nn]], "contrasts"))) {
-        contrasts(data[[nn]]) <- contr.funs[1 + isOF[nn]]
-      }
-    }
-
-    ## it might be safer to have numerical contrasts:
-    ##    get(contr.funs[1 + isOF[nn]])(nlevels(data[[nn]]))
-    if (!is.null(contrasts.arg) && is.list(contrasts.arg)) {
-      if (is.null(namC <- names(contrasts.arg))) {
-        stop("invalid 'contrasts.arg' argument")
-      }
-      for (nn in namC) {
-        if (is.na(ni <- match(nn, namD))) {
-          warning(gettextf("variable '%s' is absent, its contrast will be ignored", nn), domain = NA)
-        }
-        else {
-          ca <- contrasts.arg[[nn]]
-          if (is.matrix(ca)) {
-            contrasts(data[[ni]], ncol(ca)) <- ca
-          }
-          else {
-            contrasts(data[[ni]]) <- contrasts.arg[[nn]]
-          }
-        }
-      }
-    }
-  } else {
-    isF <- FALSE
-    data <- data.frame(x = rep(0, nrow(data)))
-  }
-  ans <- model.matrix.default(object = t, data = data)
-  cons <- if (any(isF)) {
-    lapply(data[isF], function(x) attr(x, "contrasts"))
-  } else {
-    NULL
-  }
-  attr(ans, "contrasts") <- cons
-  ans
 }

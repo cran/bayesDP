@@ -63,7 +63,13 @@ covariates.}
 covariate effect(s). Default value is 1e4. If a single value is input, the
 the scalar is repeated to the length of the input covariates. Otherwise,
 care must be taken to ensure the length of the input matches the number of
-covariates.}
+covariates. Note that covariate effects are intentionally assigned a
+near-zero historical discount weight, so their priors are effectively flat:
+the value supplied here has negligible influence on the posterior, and the
+effective prior standard deviation is much larger than the nominal value
+(by a factor of roughly 1e6 at the default). In practice the covariate
+coefficients are estimated almost entirely from the current data, and the
+posterior is insensitive to this argument across many orders of magnitude.}
 
 \item{number_mcmc_alpha}{scalar. Number of Monte Carlo simulations for
 estimating the historical data weight. Default is 5000.}
@@ -155,6 +161,26 @@ details.}
   The formula must include an intercept (i.e., do not use \code{-1} in the
   formula) and both data and data0 must be present. The column names of data
   and data0 must match. See \code{examples} below for example usage.
+
+  Internally, the model is parameterized without a fixed intercept, using
+  separate treatment and control means rather than an intercept plus a
+  treatment effect. In this parameterization the arm means are the fitted
+  values at covariate = 0, so when covariates are not centered the
+  treatment- and control-mean estimators become strongly correlated and
+  their standard errors are extrapolation errors at covariate = 0. This
+  distorts the discount-prior construction and the historical borrowing. To
+  guard against this, \code{bdplm} automatically mean-centers each covariate
+  on its pooled (current plus historical) mean before fitting, and
+  back-transforms the reported intercept onto the original covariate scale.
+  Specifically, if \eqn{\bar{x}_j} is the pooled mean of covariate \eqn{j}
+  and \eqn{\beta_j} its estimated effect, the reported intercept is
+  \eqn{\beta_0 = \beta_0^{c} - \sum_j \beta_j \bar{x}_j}, where
+  \eqn{\beta_0^{c}} is the control-arm mean estimated on the centered scale.
+  The treatment effect and covariate slopes are unchanged by centering; the
+  reported \code{intercept} remains the control-arm mean at covariate = 0 on
+  the original scale. As a result, estimates are invariant to a location
+  shift of any covariate, and users do not need to center covariates
+  themselves.
 
   The underlying model results in a marginal posterior distribution for the
   error variance \code{sigma2} that does not have a known distribution. Thus,

@@ -27,7 +27,7 @@
 #'   model.response pweibull quantile rbeta rgamma rnorm var vcov
 #' @export
 setMethod("summary", signature(object = "bdpnormal"), function(object) {
-  arm2 <- object$args$arm2
+  arm2 <- object$args1$arm2
   posterior_treatment <- object$posterior_treatment
   posterior_control <- object$posterior_control
   mu_t <- object$args1$mu_t
@@ -176,7 +176,7 @@ setMethod("summary", signature(object = "bdpnormal"), function(object) {
 #'   pweibull quantile rbeta rgamma rnorm var vcov
 #' @export
 setMethod("summary", signature(object = "bdpbinomial"), function(object) {
-  arm2 <- object$args$arm2
+  arm2 <- object$args1$arm2
   posterior_treatment <- object$posterior_treatment
   posterior_control <- object$posterior_control
   y_t <- object$args1$y_t
@@ -338,7 +338,7 @@ setMethod("summary", signature(object = "bdpsurvival"), function(object) {
     n <- nrow(data_t)
     s_t <- survival::survfitKM(factor(rep(1, n)), s_t)
     
-    survival_times_posterior <- lapply(s_t$time, ppexp,
+    survival_times_posterior <- ppexp_times(s_t$time,
                                        posterior_treatment$posterior_hazard,
                                        cuts = c(0, breaks)
     )
@@ -389,7 +389,10 @@ setMethod("summary", signature(object = "bdpsurvival"), function(object) {
   ### - Only print if arm2
   ##############################################################################
   if (arm2) {
-    ### Compute treatment effect of treatment vs control and create table
+    ### Compute treatment effect of treatment vs control via the same
+    ### inverse-variance-weighted piecewise log-hazard-ratio estimator used in
+    ### bdpsurvival(); see the bdpsurvival vignette, 'Piecewise Exponential
+    ### Model Background', lines 72-93.
     R0 <- log(posterior_treatment$posterior_hazard) - log(posterior_control$posterior_hazard)
     V0 <- 1 / apply(R0, 2, var)
     logHR0 <- R0 %*% V0 / sum(V0)
@@ -411,6 +414,7 @@ setMethod("summary", signature(object = "bdpsurvival"), function(object) {
       n_c <- nrow(data_c)
       e_c <- sum(data_c$status)
     } else {
+      data_c <- subset(data, historical == 1 & treatment == 0)
       n_c <- nrow(data_c)
       e_c <- sum(data_c$status)
     }

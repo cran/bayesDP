@@ -32,7 +32,13 @@
 #'   covariate effect(s). Default value is 1e4. If a single value is input, the
 #'   the scalar is repeated to the length of the input covariates. Otherwise,
 #'   care must be taken to ensure the length of the input matches the number of
-#'   covariates.
+#'   covariates. Note that covariate effects are intentionally assigned a
+#'   near-zero historical discount weight, so their priors are effectively flat:
+#'   the value supplied here has negligible influence on the posterior, and the
+#'   effective prior standard deviation is much larger than the nominal value
+#'   (by a factor of roughly 1e6 at the default). In practice the covariate
+#'   coefficients are estimated almost entirely from the current data, and the
+#'   posterior is insensitive to this argument across many orders of magnitude.
 #' @param discount_function character. Specify the discount function to use.
 #'   Currently supports \code{weibull}, \code{scaledweibull}, and
 #'   \code{identity}. The discount function \code{scaledweibull} scales
@@ -88,6 +94,26 @@
 #'   The column names of data and data0 must match. See \code{examples} below for
 #'   example usage.
 #'
+#'   Internally, the model is parameterized without a fixed intercept, using
+#'   separate treatment and control (log-odds) means rather than an intercept
+#'   plus a treatment effect. In this parameterization the arm means are the
+#'   fitted values at covariate = 0, so when covariates are not centered the
+#'   treatment- and control-mean estimators become strongly correlated and
+#'   their standard errors are extrapolation errors at covariate = 0. This
+#'   distorts the discount-prior construction and the historical borrowing. To
+#'   guard against this, \code{bdplogit} automatically mean-centers each
+#'   covariate on its pooled (current plus historical) mean before fitting, and
+#'   back-transforms the reported intercept onto the original covariate scale.
+#'   Specifically, if \eqn{\bar{x}_j} is the pooled mean of covariate \eqn{j}
+#'   and \eqn{\beta_j} its estimated effect, the reported intercept is
+#'   \eqn{\beta_0 = \beta_0^{c} - \sum_j \beta_j \bar{x}_j}, where
+#'   \eqn{\beta_0^{c}} is the control-arm log-odds estimated on the centered
+#'   scale. The treatment effect and covariate slopes are unchanged by
+#'   centering; the reported \code{intercept} remains the control-arm log-odds
+#'   at covariate = 0 on the original scale. As a result, estimates are
+#'   invariant to a location shift of any covariate, and users do not need to
+#'   center covariates themselves.
+#'
 #'   The underlying model uses the \code{MCMClogit} function of the MCMCpack
 #'   package to carryout posterior estimation. Add more.
 #'
@@ -122,16 +148,16 @@
 #' treatment0 <- c(rep(1, n_t0), rep(0, n_c0))
 #'
 #' # Simulate a covariate effect for current and historical data
-#' x <- rnorm(n_t + n_c, 1, 5)
-#' x0 <- rnorm(n_t0 + n_c0, 1, 5)
+#' x <- rnorm(n_t + n_c, 1, 1)
+#' x0 <- rnorm(n_t0 + n_c0, 1, 1)
 #'
-#' # Simulate outcome:
-#' # - Intercept of 10 for current and historical data
-#' # - Treatment effect of 31 for current data
-#' # - Treatment effect of 30 for historical data
-#' # - Covariate effect of 3 for current and historical data
-#' Y <- 10 + 31 * treatment + x * 3 + rnorm(n_t + n_c, 0, 5)
-#' Y0 <- 10 + 30 * treatment0 + x0 * 3 + rnorm(n_t0 + n_c0, 0, 5)
+#' # Simulate a binary outcome on the logit scale:
+#' # - Intercept of -1 for current and historical data
+#' # - Treatment (log-odds) effect of 1.0 for current data
+#' # - Treatment (log-odds) effect of 0.9 for historical data
+#' # - Covariate effect of 0.3 for current and historical data
+#' Y <- rbinom(n_t + n_c, 1, plogis(-1 + 1.0 * treatment + 0.3 * x))
+#' Y0 <- rbinom(n_t0 + n_c0, 1, plogis(-1 + 0.9 * treatment0 + 0.3 * x0))
 #'
 #' # Place data into separate treatment and control data frames and
 #' # assign historical = 0 (current) or historical = 1 (historical)
@@ -139,7 +165,7 @@
 #' df0 <- data.frame(Y = Y0, treatment = treatment0, x = x0)
 #'
 #' # Fit model using default settings
-#' fit <- bdplm(
+#' fit <- bdplogit(
 #'   formula = Y ~ treatment + x, data = df_, data0 = df0,
 #'   method = "fixed"
 #' )
@@ -156,7 +182,7 @@
 #' @importFrom MCMCpack MCMClogit
 #' @aliases bdplogit-method
 #' @aliases bdplogit,ANY-method
-#' @useDynLib bayesDP
+#' @useDynLib bayesDP, .registration = TRUE
 #' @export bdplogit
 bdplogit <- setClass("bdplogit", slots = c(
   posterior_treatment = "list",
@@ -367,17 +393,39 @@ setMethod(
 
     df <- rbind(df, df0)
 
+    ### Count number of covariates
+    names_df <- names(df)
+    covs_df <- names_df[!(names_df %in% c("Y", "intercept", "treatment", "historical"))]
+    n_covs <- length(covs_df)
+
+    ##############################################################################
+    # Mean-center covariates
+    #
+    # The model is parameterized without a fixed intercept, using separate
+    # treatment and control (log-odds) means (i.e., Y ~ -1 + treatment +
+    # control + covs). In this parameterization the arm means are the fitted
+    # values at covariate = 0. When covariates are not centered these arm-mean
+    # estimators become strongly correlated and their standard errors are
+    # extrapolation errors at covariate = 0, which breaks the (diagonal)
+    # discount-prior construction and corrupts the historical borrowing.
+    # Centering each covariate on its pooled (current + historical) mean
+    # restores the intended behavior. The centering is reversed on the
+    # posterior intercept below so that reported quantities remain on the
+    # original covariate scale.
+    ##############################################################################
+
+    covariate_means <- vapply(covs_df, function(nm) mean(df[[nm]]), numeric(1))
+
+    for (nm in covs_df) {
+      df[[nm]] <- df[[nm]] - covariate_means[[nm]]
+    }
+
     ### Split data into separate treatment & control dataframes
     df_t <- subset(df, treatment == 1)
     df_c <- subset(df, treatment == 0)
 
     ### Also create current data dataframe
     df_current <- subset(df, historical == 0, select = -intercept)
-
-    ### Count number of covariates
-    names_df <- names(df)
-    covs_df <- names_df[!(names_df %in% c("Y", "intercept", "treatment", "historical"))]
-    n_covs <- length(covs_df)
 
     ##############################################################################
     # Estimate discount weights for each of the treatment and control arms
@@ -412,14 +460,17 @@ setMethod(
 
     if (is.null(prior_treatment_effect) | is.null(prior_control_effect) |
         is.null(prior_treatment_sd) | is.null(prior_control_sd)) {
-      df0$control <- 1 - df0$treatment
+      ### Use the centered historical data so the prior arm means are estimated
+      ### on the same (centered) covariate scale as the current-data design.
+      df0_centered <- subset(df, historical == 1)
+      df0_centered$control <- 1 - df0_centered$treatment
 
-      cnames0 <- names(df0)
+      cnames0 <- names(df0_centered)
       cnames0 <- cnames0[!(cnames0 %in% c("Y", "intercept", "historical", "treatment", "control"))]
       cnames0 <- c("treatment", "control", cnames0)
       f0 <- paste0("Y~ -1+", paste0(cnames0, collapse = "+"))
 
-      fit_0 <- glm(f0, data = df0, family = binomial)
+      fit_0 <- glm(f0, data = df0_centered, family = binomial)
       summ_0 <- summary(fit_0)
 
       if (is.null(prior_treatment_effect)) prior_treatment_effect <- summ_0$coef[1, 1]
@@ -443,17 +494,18 @@ setMethod(
     ##############################################################################
 
     ### Compute prior terms
-    ### - Covarance/variance needs to be parameterized as precision
+    ### - Covariance/variance needs to be parameterized as precision
     tau2 <- c(1 / prior_treatment_sd, 1 / prior_control_sd, 1 / prior_covariate_sd)^2
     mu0 <- c(prior_treatment_effect, prior_control_effect, prior_covariate_effect)
 
     ### Calculate constants from current data
     df_current$control <- 1 - df_current$treatment
 
-    # Create analysis formula
-    df_analysis <- df_current[, c("treatment", "control", covs_df)]
-    cnames <- names(df_analysis)
-    f <- paste0("Y~ -1 +", paste0(cnames, collapse = "+"))
+    # Create analysis formula. The data frame must retain the response Y so
+    # that MCMClogit can resolve it from the formula.
+    predictors <- c("treatment", "control", covs_df)
+    df_analysis <- df_current[, c("Y", predictors)]
+    f <- paste0("Y ~ -1 +", paste0(predictors, collapse = "+"))
 
     ### Estimation scheme differs conditional on discounting method
     if (method == "fixed") {
@@ -465,15 +517,16 @@ setMethod(
         rep(1e-12, n_covs)
       )
 
-      ### Create precision matrix
-      B0 <- diag(alpha0 / tau2)
+      ### Create the discounted prior precision matrix. tau2 is already a
+      ### precision (1 / sd^2), so the discount weight multiplies it.
+      B0 <- diag(alpha0 * tau2)
 
       ### Get Bayesian fit
       fit <- MCMCpack::MCMClogit(f,
                                  data = df_analysis,
                                  mcmc = number_mcmc_beta,
                                  b0 = mu0,
-                                 B0 = diag(tau2)
+                                 B0 = B0
       )
 
       beta_samples <- data.frame(fit)
@@ -482,7 +535,17 @@ setMethod(
     }
 
     ### Estimate posterior of intercept and treatment effect
+    ### The control coefficient is the control-arm (log-odds) mean at centered
+    ### covariate = 0, i.e. at the original covariate means. Back-transform to
+    ### the original scale so the reported intercept is the control log-odds at
+    ### covariate = 0. The treatment effect (difference of arm means) and the
+    ### covariate slopes are unaffected by centering.
     beta_samples$intercept <- beta_samples$control
+    if (n_covs > 0) {
+      covariate_shift <- as.matrix(beta_samples[, covs_df, drop = FALSE]) %*%
+        covariate_means[covs_df]
+      beta_samples$intercept <- beta_samples$intercept - as.vector(covariate_shift)
+    }
     beta_samples$treatment <- beta_samples$treatment - beta_samples$control
 
     ### Format posterior table
@@ -516,6 +579,8 @@ setMethod(
       args1 = args1
     )
 
+    ### bdplogit reuses the bdplm S4 print/summary methods, since the output
+    ### structure is identical. The object is therefore classed as "bdplm".
     class(me) <- "bdplm"
     return(me)
   }
@@ -586,109 +651,3 @@ discount_logit <- function(df, discount_function, alpha_max, fix_alpha,
   )
   res
 }
-
-
-model.matrixBayes <- function(object, data = environment(object), contrasts.arg = NULL,
-                              xlev = NULL, keep.order = FALSE, drop.baseline = FALSE, ...) {
-  t <- if (missing(data)) {
-    terms(object)
-  } else {
-    terms.formula(object, data = data, keep.order = keep.order)
-  }
-
-  attr(t, "intercept") <- attr(object, "intercept")
-  if (is.null(attr(data, "terms"))) {
-    data <- model.frame(object, data, xlev = xlev)
-  } else {
-    reorder <- match(sapply(attr(t, "variables"), deparse, width.cutoff = 500)[-1], names(data))
-    if (anyNA(reorder)) {
-      stop("model frame and formula mismatch in model.matrix()")
-    }
-    if (!identical(reorder, seq_len(ncol(data)))) {
-      data <- data[, reorder, drop = FALSE]
-    }
-  }
-
-  int <- attr(t, "response")
-  if (length(data)) { # otherwise no rhs terms, so skip all this
-    if (drop.baseline) {
-      contr.funs <- as.character(getOption("contrasts"))
-    } else {
-      contr.funs <- as.character(list("contr.bayes.unordered", "contr.bayes.ordered"))
-    }
-
-    namD <- names(data)
-
-    ## turn  character columns into factors
-    for (i in namD) {
-      if (is.character(data[[i]])) {
-        data[[i]] <- factor(data[[i]])
-        warning(gettextf("variable '%s' converted to a factor", i), domain = NA)
-      }
-    }
-    isF <- vapply(data, function(x) is.factor(x) || is.logical(x), NA)
-    isF[int] <- FALSE
-    isOF <- vapply(data, is.ordered, NA)
-    for (nn in namD[isF]) { # drop response
-      if (is.null(attr(data[[nn]], "contrasts"))) {
-        contrasts(data[[nn]]) <- contr.funs[1 + isOF[nn]]
-      }
-    }
-
-    ## it might be safer to have numerical contrasts:
-    ##    get(contr.funs[1 + isOF[nn]])(nlevels(data[[nn]]))
-    if (!is.null(contrasts.arg) && is.list(contrasts.arg)) {
-      if (is.null(namC <- names(contrasts.arg))) {
-        stop("invalid 'contrasts.arg' argument")
-      }
-      for (nn in namC) {
-        if (is.na(ni <- match(nn, namD))) {
-          warning(gettextf("variable '%s' is absent, its contrast will be ignored", nn), domain = NA)
-        }
-        else {
-          ca <- contrasts.arg[[nn]]
-          if (is.matrix(ca)) {
-            contrasts(data[[ni]], ncol(ca)) <- ca
-          }
-          else {
-            contrasts(data[[ni]]) <- contrasts.arg[[nn]]
-          }
-        }
-      }
-    }
-  } else {
-    isF <- FALSE
-    data <- data.frame(x = rep(0, nrow(data)))
-  }
-  ans <- model.matrix.default(object = t, data = data)
-  cons <- if (any(isF)) {
-    lapply(data[isF], function(x) attr(x, "contrasts"))
-  } else {
-    NULL
-  }
-  attr(ans, "contrasts") <- cons
-  ans
-}
-
-# library(MCMCpack)
-# df0 <- data.frame(y = c(1,1,1,rep(0,138)),
-#                   x = rnorm(141,5,0.5),
-#                   historical = 1)
-#
-# df <- data.frame(y = rbinom(100,1,0.03),
-#                  x = rnorm(100,3,1),
-#                  historical = 0)
-#
-# df_ <- rbind(df0,df)
-#
-# fit <- MCMClogit(y~x+historical, data=df_,
-#                  mcmc = 1e4)
-#
-# posterior <- data.frame(fit)
-# p_hat <- mean(posterior$historical > 0)
-# p_hat  <- 2*ifelse(p_hat > 0.5, 1 - p_hat, p_hat)
-#
-#
-#
-# # b0=c(0,0,1),
-# # B0=B0)

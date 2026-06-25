@@ -2,10 +2,6 @@
 library(bayesDP)
 stopifnot(require(knitr))
 opts_chunk$set(
-  #comment = NA,
-  #message = FALSE,
-  #warning = FALSE,
-  #eval = if (isTRUE(exists("params"))) params$EVAL else FALSE,
   dev = "png",
   dpi = 150,
   fig.asp = 0.8,
